@@ -1357,13 +1357,36 @@
     - name: Set InfluxDB Org ID as a fact
       ansible.builtin.set_fact:
         influxdb_org_id: "{{ influxdb_org_info.json.orgs[0].id }}"
-    
+
+    - name: Slurp /etc/environment from remote
+      ansible.builtin.slurp:
+        src: /etc/environment
+      register: environment_file
+
+    - name: Decode the environment file content
+      ansible.builtin.set_fact:
+        env_decoded: "{{ environment_file.content | b64decode }}"
+
+    - name: Extract INFLUX_TOKEN from environment
+      ansible.builtin.set_fact:
+        remote_influx_token: >-
+          {{ env_decoded.split('\n') 
+             | select('match', '^INFLUX_TOKEN=') 
+             | list 
+             | first 
+             | regex_replace('^INFLUX_TOKEN=', '') 
+          }}
+
+    - name: Debug the extracted token
+      ansible.builtin.debug:
+        msg: "Token from remote: {{ remote_influx_token }}"
+
     - name: Check if Prometheus data source already exists
       ansible.builtin.uri:
         url: "{{ influxdb_url }}/api/v2/sources"
         method: GET
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         return_content: yes
       register: influxdb_sources
@@ -1379,7 +1402,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: POST
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1396,7 +1419,7 @@
         url: "{{ influxdb_url }}/api/v2/sources/{{ prometheus_source_id }}"
         method: PATCH
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1469,7 +1492,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: GET
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         return_content: yes
       register: influxdb_sources
@@ -1485,7 +1508,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: POST
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1502,7 +1525,7 @@
         url: "{{ influxdb_url }}/api/v2/sources/{{ telegraf_source_id }}"
         method: PATCH
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1823,9 +1846,9 @@
   #      hour: "8"
   #      job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system=cluster:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
 
-    - name: Make all scripts in /home/{{ username }}/clenman/scripts/mocking/ executable
+    - name: Make all scripts in /home/{{ username }}/experimentalcluster/scripts/mocking/ executable
       file:
-        path: /home/{{ username }}/clenman/scripts/mocking/
+        path: /home/{{ username }}/experimentalcluster/scripts/mocking/
         recurse: yes
         mode: '0755'
         state: directory
@@ -1834,7 +1857,7 @@
 #      cron:
 #        name: "Run ReFrame Latency Test every 60 minutes"
 #        minute: "*/60"
-#        job: "/home/{{ username }}/clenman/scripts/mocking/latency_job.sh >> /var/log/reframe_cron.log 2>&1"
+#        job: "/home/{{ username }}/experimentalcluster/scripts/mocking/latency_job.sh >> /var/log/reframe_cron.log 2>&1"
 
     - name: Create cron job for ReFrame Benchmark every 30 minutes
       cron:
@@ -1863,33 +1886,33 @@
   tasks:
     - name: Ensure target directory exists
       file:
-        path: /{{ nfs_dir_name }}/clenman-reframe-tests/checks
+        path: /{{ nfs_dir_name }}/experimentalcluster-reframe-tests/checks
         state: directory
         mode: '0755'
 
     - name: Ensure target directory exists
       file:
-        path: /{{ nfs_dir_name }}/clenman-reframe-tests/scripts
+        path: /{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts
         state: directory
         mode: '0755'
 
     - name: Render Jinja2 templates and move to target directory
       template:
         src: "{{ item }}"
-        dest: "/{{ nfs_dir_name }}/clenman-reframe-tests/checks/{{ item | basename | regex_replace('.j2$', '') }}"
-      loop: "{{ lookup('fileglob', '/home/' + username + '/clenman/scripts/benchmarks/*.j2', wantlist=True) }}"
+        dest: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/checks/{{ item | basename | regex_replace('.j2$', '') }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/benchmarks/*.j2', wantlist=True) }}"
       delegate_to: localhost
 
     - name: Render Jinja2 templates for mocking and move to target directory
       template:
         src: "{{ item }}"
-        dest: "/{{ nfs_dir_name }}/clenman-reframe-tests/scripts/{{ item | basename | regex_replace('.j2$', '') }}"
-      loop: "{{ lookup('fileglob', '/home/' + username + '/clenman/scripts/mocking/*.j2', wantlist=True) }}"
+        dest: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts/{{ item | basename | regex_replace('.j2$', '') }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/mocking/*.j2', wantlist=True) }}"
       delegate_to: localhost
 
     - name: Find all .sh files in the target directory
       ansible.builtin.find:
-        paths: "/{{ nfs_dir_name }}/clenman-reframe-tests/scripts"
+        paths: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts"
         recurse: yes
         file_type: file
         patterns: "*.sh"
@@ -1989,7 +2012,7 @@
 
     - name: Generate HPL.dat configuration from template
       template:
-        src: "/home/{{ username }}/clenman/scripts/benchmarks/src/HPL.dat.j2"
+        src: "/home/{{ username }}/experimentalcluster/scripts/benchmarks/src/HPL.dat.j2"
         dest: "{{ hpl_dir }}/hpl-{{ hpl_version }}/testing/HPL.dat"  
 
 ################################# Slurm Bots #########################################
@@ -2105,7 +2128,7 @@
     - venv
     - python3  
   vars:
-    venv_path: "/home/{{ username }}/clenman/scripts/ailearning"
+    venv_path: "/home/{{ username }}/experimentalcluster/scripts/ailearning"
     python_packages:
       - pandas
       - mysql-connector-python
