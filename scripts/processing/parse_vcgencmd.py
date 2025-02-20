@@ -3,18 +3,18 @@ import time
 import sys
 
 def read_vcgencmd_output():
-    # Führt den Befehl `vcgencmd pmic_read_adc` aus und liest den Output
+    # Runs `vcgencmd pmic_read_adc` and reads the output
     result = subprocess.run(['vcgencmd', 'pmic_read_adc'], stdout=subprocess.PIPE)
     return result.stdout.decode('utf-8')
 
 def parse_output(data):
-    # Zeitstempel in Nanosekunden
+    # Timestamp in Nanoseconds
     timestamp = int(time.time() * 1e9)
     
-    # Output vorbereiten
+
     output = []
 
-    # Zeilen parsen und in InfluxDB Line Protocol Format umwandeln
+    # parsing step and transformation to the influxdb line protocol
     for line in data.strip().split('\n'):
         key_value = line.split('=')
         if len(key_value) == 2:
@@ -32,18 +32,15 @@ def parse_output(data):
     return output
 
 def main():
-    # Warten auf Input von STDIN, um das Script zu triggern
+    # Wait for Input from STDIN to trigger
     for line in sys.stdin:
         if line.strip() == "":
-            # Wenn eine leere Zeile empfangen wird, wird das Script ausgeführt
+            # If empty input, read and parse
 
-            # Output von vcgencmd lesen
             data = read_vcgencmd_output()
 
-            # Ausgabe parsen und formatieren
             formatted_output = parse_output(data)
 
-            # Ausgabe für Telegraf/InfluxDB
             for line in formatted_output:
                 print(line)
 
