@@ -1829,22 +1829,24 @@
         mode: '0755'
         state: directory
 
-    - name: Create cron job for ReFrame Benchmark every 30 minutes
-      cron:
-        name: "Run ReFrame Benchmark Test every 10 minutes"
-        minute: "*/30"  # 30 Minutes
-        job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system={{ cluster_name }}:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
+#    - name: Create cron job for ReFrame Benchmark every 30 minutes
+ #     cron:
+  #      name: "Run ReFrame Benchmark Test every 10 minutes"
+   #     minute: "*/30"  # 30 Minutes
+    #    job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system={{ cluster_name }}:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
 
     - name: Change ownership of /{{ nfs_dir_name }}/stage recursively to {{  username }}:{{  username }}
       become: yes
       ansible.builtin.command:
         cmd: chown -R {{  username }}:{{  username }} /{{ nfs_dir_name }}/stage
+      ignore_errors: yes  
 
     - name: Change read/write of /{{ nfs_dir_name }}/stage recursively to 775
       become: yes
       ansible.builtin.command:
         cmd: chmod -R 775 /{{ nfs_dir_name }}/stage
-
+      ignore_errors: yes  
+      
 ################################# Generate own reframe checks in new folder #########################################
 
 - name: Move and render Jinja2 templates to target directory
