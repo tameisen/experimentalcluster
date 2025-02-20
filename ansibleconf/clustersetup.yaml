@@ -1370,11 +1370,12 @@
     - name: Extract INFLUX_TOKEN from environment
       ansible.builtin.set_fact:
         remote_influx_token: >-
-          {{ env_decoded.split('\n') 
-             | select('match', '^INFLUX_TOKEN=') 
-             | list 
-             | first 
-             | regex_replace('^INFLUX_TOKEN=', '') 
+          {{ env_decoded.split('\n')
+             | select('match', '^INFLUX_TOKEN=')
+             | list
+             | first
+             | regex_replace('^INFLUX_TOKEN=', '')
+             | trim
           }}
 
     - name: Debug the extracted token
