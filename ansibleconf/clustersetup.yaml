@@ -1846,7 +1846,7 @@
       ansible.builtin.command:
         cmd: chmod -R 775 /{{ nfs_dir_name }}/stage
       ignore_errors: yes  
-      
+
 ################################# Generate own reframe checks in new folder #########################################
 
 - name: Move and render Jinja2 templates to target directory
@@ -1989,93 +1989,93 @@
 
 ################################# Slurm Bots #########################################
 
-- name: Configure Slurm Bots and QoS for Load Testing
-  hosts: head_nodes
-  become: true
-  tags: 
-    - bots
-  vars:
-    bots:
-      - "bot_latenz"
-      - "bot_throughput"
-      - "bot_memory"
-  tasks:
-    - name: Create system users for each bot
-      loop: "{{ bots }}"
-      user:
-        name: "{{ item }}"
-        state: present
-        create_home: no
-
-    - name: Create account "{{ username }}"
-      command: sacctmgr add account name={{ username }} --immediate
-      args:
-        creates: /etc/slurm/account_slurm_created.flag
-      register: account_created
-      ignore_errors: yes  
-
-    - name: Create user "{{ username }}" and assign to the account "{{ username }}"
-      command: sacctmgr add user name={{ username }} account={{ username }} partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
-      register: user_add
-      ignore_errors: yes  
-
-    - name: Create account "bots"
-      command: sacctmgr add account name=bots --immediate
-      args:
-        creates: /etc/slurm/account_bots_created.flag
-      register: account_created
-      failed_when: "'Nothing new added' not in account_created.stdout"
-      changed_when: "'Nothing new added' not in account_created.stdout"
-
-    - name: Create users (bots) and assign to the account "bots"
-      loop: "{{ bots }}"
-      command: sacctmgr add user name={{ item }} account=bots partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
-      register: user_add
-      failed_when: "'Nothing new added' not in user_add.stdout and user_add.rc != 0"
-      changed_when: "'Nothing new added' not in user_add.stdout"
-
-    - name: Create high priority QoS with resource limits
-      command: sacctmgr add qos name=high_priority GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=20 --immediate
-      args:
-        creates: /etc/slurm/qos_high_priority_created.flag
-      register: qos_high_priority
-      failed_when: "'Nothing new added' not in qos_high_priority.stdout and qos_high_priority.rc != 0"
-      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
-
-    - name: Modify resources for QoS "low_priority"
-      command: sacctmgr modify qos name=high_priority set GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=10 --immediate
-      register: qos_high_priority
-      failed_when: qos_high_priority.rc != 0
-      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
-
-    - name: Create low priority QoS with resource limits
-      command: sacctmgr add qos name=low_priority GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
-      args:
-        creates: /etc/slurm/qos_low_priority_created.flag
-      register: low_high_priority
-      failed_when: "'Nothing new added' not in low_high_priority.stdout and low_high_priority.rc != 0"
-      changed_when: "'Nothing new added' not in low_high_priority.stdout"
-
-    - name: Modify resources for QoS "low_priority"
-      command: sacctmgr modify qos name=low_priority set GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
-      register: qos_low_priority
-      failed_when: qos_low_priority.rc != 0
-      changed_when: "'Nothing new added' not in qos_low_priority.stdout"
-
-    - name: Assign high_priority QoS to bot_latenz
-      command: sacctmgr modify user name=bot_latenz set qos=high_priority --immediate
-
-    - name: Assign low_priority QoS to bot_throughput and bot_memory
-      loop:
-        - bot_throughput
-        - bot_memory
-      command: sacctmgr modify user name={{ item }} set qos=low_priority --immediate
-
-    - name: Output bot QoS assignments
-      loop: "{{ bots }}"
-      command: sacctmgr show associations where user={{ item }}
-      register: qos_output
-      failed_when: qos_output.rc != 0
+#- name: Configure Slurm Bots and QoS for Load Testing
+#  hosts: head_nodes
+#  become: true
+#  tags: 
+#    - bots
+#  vars:
+#    bots:
+#      - "bot_latenz"
+#      - "bot_throughput"
+#      - "bot_memory"
+#  tasks:
+#    - name: Create system users for each bot
+#      loop: "{{ bots }}"
+#      user:
+#        name: "{{ item }}"
+#        state: present
+#        create_home: no
+#
+#    - name: Create account "{{ username }}"
+#      command: sacctmgr add account name={{ username }} --immediate
+#      args:
+#        creates: /etc/slurm/account_slurm_created.flag
+#      register: account_created
+#      ignore_errors: yes  
+#
+#    - name: Create user "{{ username }}" and assign to the account "{{ username }}"
+#      command: sacctmgr add user name={{ username }} account={{ username }} partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
+#      register: user_add
+#      ignore_errors: yes  
+#
+#    - name: Create account "bots"
+#      command: sacctmgr add account name=bots --immediate
+#      args:
+#        creates: /etc/slurm/account_bots_created.flag
+#      register: account_created
+#      failed_when: "'Nothing new added' not in account_created.stdout"
+#      changed_when: "'Nothing new added' not in account_created.stdout"
+#
+#    - name: Create users (bots) and assign to the account "bots"
+#      loop: "{{ bots }}"
+#      command: sacctmgr add user name={{ item }} account=bots partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
+#      register: user_add
+#      failed_when: "'Nothing new added' not in user_add.stdout and user_add.rc != 0"
+#      changed_when: "'Nothing new added' not in user_add.stdout"
+#
+#    - name: Create high priority QoS with resource limits
+#      command: sacctmgr add qos name=high_priority GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=20 --immediate
+#      args:
+#        creates: /etc/slurm/qos_high_priority_created.flag
+#      register: qos_high_priority
+#      failed_when: "'Nothing new added' not in qos_high_priority.stdout and qos_high_priority.rc != 0"
+#      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
+#
+#    - name: Modify resources for QoS "low_priority"
+#      command: sacctmgr modify qos name=high_priority set GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=10 --immediate
+#      register: qos_high_priority
+#      failed_when: qos_high_priority.rc != 0
+#      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
+#
+#    - name: Create low priority QoS with resource limits
+#      command: sacctmgr add qos name=low_priority GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
+#      args:
+#        creates: /etc/slurm/qos_low_priority_created.flag
+#      register: low_high_priority
+#      failed_when: "'Nothing new added' not in low_high_priority.stdout and low_high_priority.rc != 0"
+#      changed_when: "'Nothing new added' not in low_high_priority.stdout"
+#
+#    - name: Modify resources for QoS "low_priority"
+#      command: sacctmgr modify qos name=low_priority set GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
+#      register: qos_low_priority
+#      failed_when: qos_low_priority.rc != 0
+#      changed_when: "'Nothing new added' not in qos_low_priority.stdout"
+#
+#    - name: Assign high_priority QoS to bot_latenz
+#      command: sacctmgr modify user name=bot_latenz set qos=high_priority --immediate
+#
+#    - name: Assign low_priority QoS to bot_throughput and bot_memory
+#      loop:
+#        - bot_throughput
+#        - bot_memory
+#      command: sacctmgr modify user name={{ item }} set qos=low_priority --immediate
+#
+#    - name: Output bot QoS assignments
+#      loop: "{{ bots }}"
+#      command: sacctmgr show associations where user={{ item }}
+#      register: qos_output
+#      failed_when: qos_output.rc != 0
 
 ################################# Install cpufrequtils  #########################################
 
