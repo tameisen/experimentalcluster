@@ -1,7 +1,13 @@
-Cluster Automation and Energy Optimization
-This project is part of a Bachelor thesis at FH Aachen, Germany. The goal is to automate cluster management and optimize energy consumption across the infrastructure using Raspberry Pi 5's.
+This project set's up a (Raspberry Pi 5) Cluster with Ansible. It aims to provide the easiest way to create a fully functional Cluster with several HPC Tools as a playground for research and training purposes.
+
+It uses Monitoring Tools like Grafana and Prometheus. Reframe for Benchmarktests. Slurm as the Scheduler. Munge and MPI for parallel computing. It can measure and Store Energy Data from the internal Raspberry Pi 5 PMIC and Shelly Plug S. It also includes some Scripts for Data Analysis.
+
+It is part of a Bachelor thesis written by Tobias Alexander Meisen at the FH Aachen University, Germany.
 
 Prerequisites
+
+Use the Raspian Pi Imager to flash the necessary SD cards with Raspberry Pi Os Lite (64) (Lite recommended). Make sure to Enable SSH.
+
 Ensure that the following tools are installed on your system:
 
 SSH
@@ -10,20 +16,25 @@ Ansible
 SSH Key Setup
 
 
-Copy your SSH keys to the .ssh directory:
+Copy your local SSH keys to the .ssh directory of the HeadNode:
 
 bash
 cp id_rsa ~/.ssh/
 cp id_rsa.pub ~/.ssh/
-cp deploy_rsa ~/.ssh/
-cp deploy_rsa.pub ~/.ssh/
 
+Now the Headnode should have access to the Computing Nodes. This is of course not neccessary, if you run the Raspian Imager on the Headnode.
 
 Set the appropriate permissions for the SSH keys:
 
 bash
-sudo chmod 600 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub ~/.ssh/deploy_rsa ~/.ssh/deploy_rsa.pub
+sudo chmod 600 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
 
+Login to youre Computing Nodes from your Headnode:
+
+bash
+ssh node@node001
+
+Accept all fingerprints with "yes".
 
 Update and upgrade your system packages:
 
@@ -32,39 +43,15 @@ sudo apt update
 sudo apt upgrade -y
 
 
-Project Deployment
-You can choose to deploy the project using scp or git:
-
-Option 1: Using SCP (headnode)
-Transfer the project files to your local machine:
-
-bash
-scp -r node@192.168.0.1:~/Documents/AnsibleSetup C:\Users\User\Desktop (example)
-
-
-Option 2: Using Git (headnode)
 Install Git:
 
 bash
 sudo apt install git -y
-Clone the repository using a specific SSH key:
+Clone the repository
 
 bash
-GIT_SSH_COMMAND='ssh -i /home/node/.ssh/deploy_rsa' git clone git@github.com:tameisen/clenman.git
+git clone https://github.com/tameisen/experimentalcluster.git
 
-
-Alternatively, configure SSH for GitHub:
-
-bash
-nano ~/.ssh/config
-Add the following configuration:
-
-plaintext
-Host github-repo
-    HostName github.com
-    User git
-    IdentityFile /home/user/.ssh/deploy_key_repo_name
-Navigate to the project directory:
 
 bash
 cd clenman/ansible/
@@ -89,8 +76,6 @@ Running the Playbook
 To execute the playbook for automating cluster setup and energy optimization, run:
 
 bash
-ansible-playbook -i inventory.yaml clustersetuprework.yaml
+ansible-playbook -i inventory.yaml clustersetup.yaml
 
-License
-This project is licensed under the MIT License.
 

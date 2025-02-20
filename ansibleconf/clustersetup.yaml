@@ -1357,13 +1357,37 @@
     - name: Set InfluxDB Org ID as a fact
       ansible.builtin.set_fact:
         influxdb_org_id: "{{ influxdb_org_info.json.orgs[0].id }}"
-    
+
+    - name: Slurp /etc/environment from remote
+      ansible.builtin.slurp:
+        src: /etc/environment
+      register: environment_file
+
+    - name: Decode the environment file content
+      ansible.builtin.set_fact:
+        env_decoded: "{{ environment_file.content | b64decode }}"
+
+    - name: Extract INFLUX_TOKEN from environment
+      ansible.builtin.set_fact:
+        remote_influx_token: >-
+          {{ env_decoded.split('\n')
+             | select('match', '^INFLUX_TOKEN=')
+             | list
+             | first
+             | regex_replace('^INFLUX_TOKEN=', '')
+             | trim
+          }}
+
+    - name: Debug the extracted token
+      ansible.builtin.debug:
+        msg: "Token from remote: {{ remote_influx_token }}"
+
     - name: Check if Prometheus data source already exists
       ansible.builtin.uri:
         url: "{{ influxdb_url }}/api/v2/sources"
         method: GET
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         return_content: yes
       register: influxdb_sources
@@ -1379,7 +1403,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: POST
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1396,7 +1420,7 @@
         url: "{{ influxdb_url }}/api/v2/sources/{{ prometheus_source_id }}"
         method: PATCH
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1469,7 +1493,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: GET
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         return_content: yes
       register: influxdb_sources
@@ -1485,7 +1509,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: POST
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1502,7 +1526,7 @@
         url: "{{ influxdb_url }}/api/v2/sources/{{ telegraf_source_id }}"
         method: PATCH
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ remote_influx_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
@@ -1756,22 +1780,6 @@
         - reframe
         - config
 
-    - name: Reload systemd daemon to recognize new service
-      ansible.builtin.systemd:
-        daemon_reload: yes
-      tags:
-        - service
-        - config
-
-    - name: Enable and start ReFrame service
-      ansible.builtin.systemd:
-        name: reframe
-        enabled: yes
-        state: started
-      tags: 
-        - service
-        - config
-
     - name: Add ReFrame to PATH in .bashrc
       ansible.builtin.lineinfile:
         path: /home/{{ username }}/.bashrc
@@ -1801,15 +1809,6 @@
         - cscs-tests
       ignore_errors: yes  
 
-    - name: List all CSCS ReFrame tests
-      ansible.builtin.shell: |
-        /{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/cscs-reframe-tests/config/cscs.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -l
-      args:
-        executable: /bin/bash
-      tags:
-        - reframe
-        - cscs-tests
-
 - name: Create cron jobs for ReFrame Benchmark
   hosts: head_nodes
   tags: 
@@ -1823,34 +1822,30 @@
   #      hour: "8"
   #      job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system=cluster:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
 
-    - name: Make all scripts in /home/{{ username }}/clenman/scripts/mocking/ executable
+    - name: Make all scripts in /home/{{ username }}/experimentalcluster/scripts/analysis/ executable
       file:
-        path: /home/{{ username }}/clenman/scripts/mocking/
+        path: /home/{{ username }}/experimentalcluster/scripts/analysis/
         recurse: yes
         mode: '0755'
         state: directory
 
-#    - name: Create cron job for ReFrame latency test every 30 minutes
-#      cron:
-#        name: "Run ReFrame Latency Test every 60 minutes"
-#        minute: "*/60"
-#        job: "/home/{{ username }}/clenman/scripts/mocking/latency_job.sh >> /var/log/reframe_cron.log 2>&1"
-
-    - name: Create cron job for ReFrame Benchmark every 30 minutes
-      cron:
-        name: "Run ReFrame Benchmark Test every 10 minutes"
-        minute: "*/30"  # Alle 30 Minuten
-        job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system={{ cluster_name }}:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
+#    - name: Create cron job for ReFrame Benchmark every 30 minutes
+ #     cron:
+  #      name: "Run ReFrame Benchmark Test every 10 minutes"
+   #     minute: "*/30"  # 30 Minutes
+    #    job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system={{ cluster_name }}:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
 
     - name: Change ownership of /{{ nfs_dir_name }}/stage recursively to {{  username }}:{{  username }}
       become: yes
       ansible.builtin.command:
         cmd: chown -R {{  username }}:{{  username }} /{{ nfs_dir_name }}/stage
+      ignore_errors: yes  
 
     - name: Change read/write of /{{ nfs_dir_name }}/stage recursively to 775
       become: yes
       ansible.builtin.command:
         cmd: chmod -R 775 /{{ nfs_dir_name }}/stage
+      ignore_errors: yes  
 
 ################################# Generate own reframe checks in new folder #########################################
 
@@ -1863,33 +1858,33 @@
   tasks:
     - name: Ensure target directory exists
       file:
-        path: /{{ nfs_dir_name }}/clenman-reframe-tests/checks
+        path: /{{ nfs_dir_name }}/experimentalcluster-reframe-tests/checks
         state: directory
         mode: '0755'
 
     - name: Ensure target directory exists
       file:
-        path: /{{ nfs_dir_name }}/clenman-reframe-tests/scripts
+        path: /{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts
         state: directory
         mode: '0755'
 
     - name: Render Jinja2 templates and move to target directory
       template:
         src: "{{ item }}"
-        dest: "/{{ nfs_dir_name }}/clenman-reframe-tests/checks/{{ item | basename | regex_replace('.j2$', '') }}"
-      loop: "{{ lookup('fileglob', '/home/' + username + '/clenman/scripts/benchmarks/*.j2', wantlist=True) }}"
+        dest: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/checks/{{ item | basename | regex_replace('.j2$', '') }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/benchmarks/*.j2', wantlist=True) }}"
       delegate_to: localhost
 
-    - name: Render Jinja2 templates for mocking and move to target directory
+    - name: Render Jinja2 templates for analysis and move to target directory
       template:
         src: "{{ item }}"
-        dest: "/{{ nfs_dir_name }}/clenman-reframe-tests/scripts/{{ item | basename | regex_replace('.j2$', '') }}"
-      loop: "{{ lookup('fileglob', '/home/' + username + '/clenman/scripts/mocking/*.j2', wantlist=True) }}"
+        dest: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts/{{ item | basename | regex_replace('.j2$', '') }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/analysis/*.j2', wantlist=True) }}"
       delegate_to: localhost
 
     - name: Find all .sh files in the target directory
       ansible.builtin.find:
-        paths: "/{{ nfs_dir_name }}/clenman-reframe-tests/scripts"
+        paths: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts"
         recurse: yes
         file_type: file
         patterns: "*.sh"
@@ -1989,98 +1984,98 @@
 
     - name: Generate HPL.dat configuration from template
       template:
-        src: "/home/{{ username }}/clenman/scripts/benchmarks/src/HPL.dat.j2"
+        src: "/home/{{ username }}/experimentalcluster/scripts/benchmarks/src/HPL.dat.j2"
         dest: "{{ hpl_dir }}/hpl-{{ hpl_version }}/testing/HPL.dat"  
 
 ################################# Slurm Bots #########################################
 
-- name: Configure Slurm Bots and QoS for Load Testing
-  hosts: head_nodes
-  become: true
-  tags: 
-    - bots
-  vars:
-    bots:
-      - "bot_latenz"
-      - "bot_throughput"
-      - "bot_memory"
-  tasks:
-    - name: Create system users for each bot
-      loop: "{{ bots }}"
-      user:
-        name: "{{ item }}"
-        state: present
-        create_home: no
-
-    - name: Create account "{{ username }}"
-      command: sacctmgr add account name={{ username }} --immediate
-      args:
-        creates: /etc/slurm/account_slurm_created.flag
-      register: account_created
-      ignore_errors: yes  
-
-    - name: Create user "{{ username }}" and assign to the account "{{ username }}"
-      command: sacctmgr add user name={{ username }} account={{ username }} partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
-      register: user_add
-      ignore_errors: yes  
-
-    - name: Create account "bots"
-      command: sacctmgr add account name=bots --immediate
-      args:
-        creates: /etc/slurm/account_bots_created.flag
-      register: account_created
-      failed_when: "'Nothing new added' not in account_created.stdout"
-      changed_when: "'Nothing new added' not in account_created.stdout"
-
-    - name: Create users (bots) and assign to the account "bots"
-      loop: "{{ bots }}"
-      command: sacctmgr add user name={{ item }} account=bots partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
-      register: user_add
-      failed_when: "'Nothing new added' not in user_add.stdout and user_add.rc != 0"
-      changed_when: "'Nothing new added' not in user_add.stdout"
-
-    - name: Create high priority QoS with resource limits
-      command: sacctmgr add qos name=high_priority GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=20 --immediate
-      args:
-        creates: /etc/slurm/qos_high_priority_created.flag
-      register: qos_high_priority
-      failed_when: "'Nothing new added' not in qos_high_priority.stdout and qos_high_priority.rc != 0"
-      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
-
-    - name: Modify resources for QoS "low_priority"
-      command: sacctmgr modify qos name=high_priority set GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=10 --immediate
-      register: qos_high_priority
-      failed_when: qos_high_priority.rc != 0
-      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
-
-    - name: Create low priority QoS with resource limits
-      command: sacctmgr add qos name=low_priority GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
-      args:
-        creates: /etc/slurm/qos_low_priority_created.flag
-      register: low_high_priority
-      failed_when: "'Nothing new added' not in low_high_priority.stdout and low_high_priority.rc != 0"
-      changed_when: "'Nothing new added' not in low_high_priority.stdout"
-
-    - name: Modify resources for QoS "low_priority"
-      command: sacctmgr modify qos name=low_priority set GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
-      register: qos_low_priority
-      failed_when: qos_low_priority.rc != 0
-      changed_when: "'Nothing new added' not in qos_low_priority.stdout"
-
-    - name: Assign high_priority QoS to bot_latenz
-      command: sacctmgr modify user name=bot_latenz set qos=high_priority --immediate
-
-    - name: Assign low_priority QoS to bot_throughput and bot_memory
-      loop:
-        - bot_throughput
-        - bot_memory
-      command: sacctmgr modify user name={{ item }} set qos=low_priority --immediate
-
-    - name: Output bot QoS assignments
-      loop: "{{ bots }}"
-      command: sacctmgr show associations where user={{ item }}
-      register: qos_output
-      failed_when: qos_output.rc != 0
+#- name: Configure Slurm Bots and QoS for Load Testing
+#  hosts: head_nodes
+#  become: true
+#  tags: 
+#    - bots
+#  vars:
+#    bots:
+#      - "bot_latenz"
+#      - "bot_throughput"
+#      - "bot_memory"
+#  tasks:
+#    - name: Create system users for each bot
+#      loop: "{{ bots }}"
+#      user:
+#        name: "{{ item }}"
+#        state: present
+#        create_home: no
+#
+#    - name: Create account "{{ username }}"
+#      command: sacctmgr add account name={{ username }} --immediate
+#      args:
+#        creates: /etc/slurm/account_slurm_created.flag
+#      register: account_created
+#      ignore_errors: yes  
+#
+#    - name: Create user "{{ username }}" and assign to the account "{{ username }}"
+#      command: sacctmgr add user name={{ username }} account={{ username }} partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
+#      register: user_add
+#      ignore_errors: yes  
+#
+#    - name: Create account "bots"
+#      command: sacctmgr add account name=bots --immediate
+#      args:
+#        creates: /etc/slurm/account_bots_created.flag
+#      register: account_created
+#      failed_when: "'Nothing new added' not in account_created.stdout"
+#      changed_when: "'Nothing new added' not in account_created.stdout"
+#
+#    - name: Create users (bots) and assign to the account "bots"
+#      loop: "{{ bots }}"
+#      command: sacctmgr add user name={{ item }} account=bots partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
+#      register: user_add
+#      failed_when: "'Nothing new added' not in user_add.stdout and user_add.rc != 0"
+#      changed_when: "'Nothing new added' not in user_add.stdout"
+#
+#    - name: Create high priority QoS with resource limits
+#      command: sacctmgr add qos name=high_priority GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=20 --immediate
+#      args:
+#        creates: /etc/slurm/qos_high_priority_created.flag
+#      register: qos_high_priority
+#      failed_when: "'Nothing new added' not in qos_high_priority.stdout and qos_high_priority.rc != 0"
+#      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
+#
+#    - name: Modify resources for QoS "low_priority"
+#      command: sacctmgr modify qos name=high_priority set GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=10 --immediate
+#      register: qos_high_priority
+#      failed_when: qos_high_priority.rc != 0
+#      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
+#
+#    - name: Create low priority QoS with resource limits
+#      command: sacctmgr add qos name=low_priority GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
+#      args:
+#        creates: /etc/slurm/qos_low_priority_created.flag
+#      register: low_high_priority
+#      failed_when: "'Nothing new added' not in low_high_priority.stdout and low_high_priority.rc != 0"
+#      changed_when: "'Nothing new added' not in low_high_priority.stdout"
+#
+#    - name: Modify resources for QoS "low_priority"
+#      command: sacctmgr modify qos name=low_priority set GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
+#      register: qos_low_priority
+#      failed_when: qos_low_priority.rc != 0
+#      changed_when: "'Nothing new added' not in qos_low_priority.stdout"
+#
+#    - name: Assign high_priority QoS to bot_latenz
+#      command: sacctmgr modify user name=bot_latenz set qos=high_priority --immediate
+#
+#    - name: Assign low_priority QoS to bot_throughput and bot_memory
+#      loop:
+#        - bot_throughput
+#        - bot_memory
+#      command: sacctmgr modify user name={{ item }} set qos=low_priority --immediate
+#
+#    - name: Output bot QoS assignments
+#      loop: "{{ bots }}"
+#      command: sacctmgr show associations where user={{ item }}
+#      register: qos_output
+#      failed_when: qos_output.rc != 0
 
 ################################# Install cpufrequtils  #########################################
 
@@ -2105,7 +2100,7 @@
     - venv
     - python3  
   vars:
-    venv_path: "/home/{{ username }}/clenman/scripts/ailearning"
+    venv_path: "/home/{{ username }}/experimentalcluster/scripts"
     python_packages:
       - pandas
       - mysql-connector-python
