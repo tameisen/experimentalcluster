@@ -1363,7 +1363,7 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: GET
         headers:
-          Authorization: "Token {{ influxdb_initial_token }}"
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
           Content-Type: "application/json"
         return_content: yes
       register: influxdb_sources
