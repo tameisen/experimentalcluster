@@ -1809,15 +1809,6 @@
         - cscs-tests
       ignore_errors: yes  
 
-    - name: List all CSCS ReFrame tests
-      ansible.builtin.shell: |
-        /{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/cscs-reframe-tests/config/cscs.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -l
-      args:
-        executable: /bin/bash
-      tags:
-        - reframe
-        - cscs-tests
-
 - name: Create cron jobs for ReFrame Benchmark
   hosts: head_nodes
   tags: 
