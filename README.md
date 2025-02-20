@@ -5,6 +5,9 @@ It uses Monitoring Tools like Grafana and Prometheus. Reframe for Benchmarktests
 It is part of a Bachelor thesis written by Tobias Alexander Meisen at the FH Aachen University, Germany.
 
 Prerequisites
+
+Use the Raspian Pi Imager to flash the necessary SD cards with Raspberry Pi Os Lite (64) (Lite recommended). Make sure to Enable SSH.
+
 Ensure that the following tools are installed on your system:
 
 SSH
@@ -13,20 +16,25 @@ Ansible
 SSH Key Setup
 
 
-Copy your SSH keys to the .ssh directory:
+Copy your local SSH keys to the .ssh directory of the HeadNode:
 
 bash
 cp id_rsa ~/.ssh/
 cp id_rsa.pub ~/.ssh/
-cp deploy_rsa ~/.ssh/
-cp deploy_rsa.pub ~/.ssh/
 
+Now the Headnode should have access to the Computing Nodes. This is of course not neccessary, if you run the Raspian Imager on the Headnode.
 
 Set the appropriate permissions for the SSH keys:
 
 bash
-sudo chmod 600 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub ~/.ssh/deploy_rsa ~/.ssh/deploy_rsa.pub
+sudo chmod 600 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
 
+Login to youre Computing Nodes from your Headnode:
+
+bash
+ssh node@node001
+
+Accept all fingerprints with "yes".
 
 Update and upgrade your system packages:
 
@@ -42,7 +50,7 @@ sudo apt install git -y
 Clone the repository
 
 bash
-GIT_SSH_COMMAND='ssh -i /home/node/.ssh/deploy_rsa' git clone git@github.com:tameisen/experimentalcluster.git
+git clone https://github.com/tameisen/experimentalcluster.git
 
 
 bash
@@ -68,6 +76,6 @@ Running the Playbook
 To execute the playbook for automating cluster setup and energy optimization, run:
 
 bash
-ansible-playbook -i inventory.yaml clustersetuprework.yaml
+ansible-playbook -i inventory.yaml clustersetup.yaml
 
 

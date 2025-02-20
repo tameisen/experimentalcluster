@@ -1366,6 +1366,8 @@
           Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
           Content-Type: "application/json"
         return_content: yes
+      environment:
+        INFLUX_TOKEN: "{{ influxdb_initial_token }}"
       register: influxdb_sources
 
     - name: Set fact if Prometheus data source exists
