@@ -1,0 +1,11 @@
+zone "{{ cluster_domain_name }}" IN {
+    type master;
+    file "/etc/bind/db.{{ cluster_domain_name }}";
+    allow-update { none; };
+};
+
+zone "{{ reverse_network }}.in-addr.arpa" IN {
+    type master;
+    file "/etc/bind/db.{{ reverse_network }}.in-addr.arpa";
+    allow-update { none; };
+};

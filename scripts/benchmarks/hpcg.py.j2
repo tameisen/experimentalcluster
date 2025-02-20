@@ -1,0 +1,52 @@
+import os
+import reframe as rfm
+import reframe.utility.sanity as sn
+
+
+@rfm.simple_test
+class HPCGCheckRef(rfm.RegressionTest):
+    descr = 'HPCG reference benchmark for snowflake'
+    valid_systems = ['{ cluster_name }:{ computing_partition_name }']
+    valid_prog_environs = ['gnu']
+    build_system = 'Make'
+    sourcesdir = 'https://github.com/hpcg-benchmark/hpcg.git'
+    executable = 'bin/xhpcg'
+    executable_opts = ['--nx=104', '--ny=104', '--nz=104', '-t2']
+    
+    # Datei-Muster zur Erfassung der Ausgabe
+    output_file = sn.getitem(sn.glob('HPCG*.txt'), 0)
+    
+    num_tasks = 1
+    num_cpus_per_task = 1
+    
+    reference = {
+        '{ cluster_name }:{ computing_partition_name }': {
+            'gflops': (1.2, -0.1, None, 'Gflop/s')
+        }
+    }
+    
+    maintainers = ['SK', 'EK']
+    tags = {'benchmark', 'cpu'}
+
+    @run_after('init')
+    def set_modules(self):
+        pass
+
+    @run_before('compile')
+    def set_build_opts(self):
+        self.build_system.options = ['arch=MPI_GCC_OMP']
+
+    @performance_function('Gflop/s')
+    def gflops(self):
+        # Berechnung der Leistung in GFLOP/s für `snowflake`
+        return sn.extractsingle(
+            r'HPCG result is VALID with a GFLOP\/s rating of=\s*(?P<perf>\S+)',
+            self.output_file, 'perf', float
+        )
+
+    @sanity_function
+    def validate_passed(self):
+        return sn.all([
+            sn.assert_eq(4, sn.count(sn.findall(r'PASSED', self.output_file))),
+            sn.assert_eq(0, self.num_tasks % self.num_cpus_per_task)
+        ])

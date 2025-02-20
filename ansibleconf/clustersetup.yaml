@@ -1,0 +1,2222 @@
+################################# Initial checks for the installation ############################################
+### Checks: Node status, Sudo Password Konfigurations, Timesync for NFS, Shelly Status, Reboot ###
+
+- name: Update /etc/hosts file on head node and accept SSH fingerprints
+  hosts: head_nodes
+  become: yes
+  gather_facts: no  
+  tags: 
+    - common
+    - ssh
+  tasks:
+    - name: Add SSH config to disable StrictHostKeyChecking
+      lineinfile:
+        path: /home/{{ username }}/.ssh/config
+        line: |
+          Host *
+              StrictHostKeyChecking no
+        create: yes
+        mode: '0600'
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+    - name: Collect information about computing nodes
+      set_fact:
+        compute_nodes: "{{ groups['computing_nodes'] | map('extract', hostvars, 'ansible_host') | zip(groups['computing_nodes']) | map('join', ' ') | list }}"
+
+    - name: Ensure /etc/hosts contains entries for computing nodes
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item }}"
+        state: present
+      with_items: "{{ compute_nodes }}"
+      when: compute_nodes is defined
+
+- name: Initial checks for Cluster Setup
+  hosts: all
+  gather_facts: False
+  become: true
+  collections:
+    - community.general
+  tags: 
+    - common
+    - checks
+  tasks:
+    - name: Ping my hosts
+      ansible.builtin.ping:
+
+    - name: Check if sudo password is required
+      ansible.builtin.stat:
+        path: /etc/sudoers
+      register: sudoers_status
+
+    - name: Ensure systemd-timesyncd is active and enabled
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        state: started
+        enabled: true
+      become: true
+
+    - name: Ensure correct permissions on /tmp and restart Influxd and Influxdb services
+      ansible.builtin.file:
+        path: /tmp
+        mode: '1777'
+        state: directory   
+
+- name: Check Shellies status
+  hosts: all
+  tags: 
+    - common
+    - checks
+  gather_facts: false
+  tasks:
+    - name: Check status of all Shelly devices
+      ansible.builtin.uri:
+        url: "http://{{ item.ip }}/#/switch/0/overview"
+        return_content: yes
+      loop: "{{ shelly_devices }}"
+      register: shelly_status
+  ignore_errors: yes
+
+- name: Update Shelly Firmware
+  hosts: all
+  tags: 
+    - common
+    - firmware
+  tasks:
+    - name: Trigger firmware update
+      uri:
+        url: "http://{{ item.ip }}/rpc"
+        method: POST
+        body_format: json
+        body:
+          id: 1
+          method: "Shelly.Update"
+        headers:
+          Content-Type: "application/json"
+        status_code: 200
+      loop: "{{ shelly_devices }}"
+      register: result
+     
+################################# Start of basic functionality like Sudo, Language, Keyboard, Mouse and Fan ############################################
+
+- name: PiCluster Common Setup
+  hosts: all
+  gather_facts: False
+  collections:
+    - community.general
+  tags: common
+  tasks:
+    - name: Add sudoers configuration for Ansible user
+      ansible.builtin.lineinfile:
+        dest: /etc/sudoers
+        line: "{{ username }} ALL=(ALL) NOPASSWD: ALL"
+        insertafter: EOF
+        validate: 'visudo -cf %s'
+      become: true
+      become_method: sudo
+      become_user: root
+      when: sudoers_status.stat.exists and sudoers_status.stat.mode == "0640"
+
+    - name: Setting language to German
+      ansible.builtin.locale_gen:
+        name: de_DE.UTF-8
+      become: yes
+
+    - name: Set system locale to German
+      ansible.builtin.lineinfile:
+        path: /etc/default/locale
+        line: 'LANG=de_DE.UTF-8'
+        create: yes
+      become: yes
+
+    - name: Set keyboard model to Logitech and layout to German
+      ansible.builtin.lineinfile:
+        path: /etc/default/keyboard
+        regexp: '^XKBMODEL='
+        line: 'XKBMODEL="logitech"'
+      become: yes
+
+    - name: Ensure German keyboard layout is set
+      ansible.builtin.lineinfile:
+        path: /etc/default/keyboard
+        regexp: '^XKBLAYOUT='
+        line: 'XKBLAYOUT="de"'
+      become: yes
+
+- name: Update /etc/hosts file on head node and accept SSH fingerprints
+  hosts: head_nodes
+  become: yes
+  gather_facts: no  
+  tags: 
+    - common
+    - ssh
+  tasks:
+    - name: Add SSH config to disable StrictHostKeyChecking
+      lineinfile:
+        path: /home/{{ username }}/.ssh/config
+        line: |
+          Host *
+              StrictHostKeyChecking no
+        create: yes
+        mode: '0600'
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+    - name: Collect information about computing nodes
+      set_fact:
+        compute_nodes: "{{ groups['computing_nodes'] | map('extract', hostvars, 'ansible_host') | zip(groups['computing_nodes']) | map('join', ' ') | list }}"
+
+    - name: Ensure /etc/hosts contains entries for computing nodes
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item }}"
+        state: present
+      with_items: "{{ compute_nodes }}"
+      when: compute_nodes is defined
+
+- name: Add Master Node to Computing Nodes /etc/hosts
+  hosts: computing_nodes
+  become: yes
+  tags: 
+    - common
+    - ssh
+  tasks:
+    - name: Ensure hnode001 is in /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        state: present
+        line: "{{ hostvars['hnode001']['ansible_host'] }} hnode001"
+
+- name: Ensure correct cgroup parameters in cmdline.txt
+  hosts: all
+  become: yes
+  tags:
+    - common
+    - cgroup
+  tasks:
+    - name: Read current cmdline.txt content
+      slurp:
+        src: /boot/firmware/cmdline.txt
+      register: cmdline_content
+
+    - name: Set current cmdline variable
+      set_fact:
+        current_cmdline: "{{ cmdline_content.content | b64decode | trim }}"
+
+    - name: Remove any existing 'cgroup_enable' parameters
+      set_fact:
+        cleaned_cmdline: "{{ current_cmdline | regex_replace('(?:\\s*cgroup_enable=\\S+)', '') }}"
+
+    - name: Remove any existing 'systemd.unified_cgroup_hierarchy' parameters and collapse spaces
+      set_fact:
+        cleaned_cmdline: "{{ cleaned_cmdline | regex_replace('(?:\\s*systemd\\.unified_cgroup_hierarchy=\\S+)', '') | regex_replace('\\s+', ' ') | trim }}"
+
+    - name: Compose new cmdline with required cgroup parameters
+      set_fact:
+        new_cmdline: "{{ cleaned_cmdline }} cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"
+
+    - name: Debug show new and current cmdline
+      debug:
+        msg: "new: '{{ new_cmdline }}' | current: '{{ current_cmdline }}'"
+
+    - name: Update /boot/firmware/cmdline.txt if needed
+      copy:
+        content: "{{ new_cmdline }}"
+        dest: /boot/firmware/cmdline.txt
+      when: new_cmdline != current_cmdline
+
+
+
+
+
+    - name: Display updated cmdline.txt contents
+      command: cat /boot/firmware/cmdline.txt
+      register: updated_cmdline_contents
+
+    - debug:
+        var: updated_cmdline_contents.stdout
+
+    - name: Verify if memory cgroup is enabled
+      command: cat /proc/cgroups
+      register: cgroup_status
+
+    - name: Check if memory cgroup is enabled
+      debug:
+        msg: "Memory cgroup is successfully enabled."
+      when: "'memory' in cgroup_status.stdout and '1' in cgroup_status.stdout"
+
+- name: Add an additional 4 GB swapfile
+  hosts: all
+  become: yes
+  tags: 
+    - common
+    - swap  
+  tasks:
+    - name: Create a new 4 GB swapfile
+      command: fallocate -l 4G /swapfile2
+      ignore_errors: true
+
+    - name: Set swapfile permissions
+      file:
+        path: /swapfile2
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Format the new swapfile
+      command: mkswap /swapfile2
+      ignore_errors: true
+
+    - name: Enable the new swapfile
+      command: swapon /swapfile2
+      ignore_errors: true
+
+    - name: Ensure the new swapfile is mounted at boot
+      mount:
+        name: none
+        src: /swapfile2
+        fstype: swap
+        opts: sw
+        state: present
+
+    - name: Verify swap status
+      command: swapon --show
+      register: swap_status
+
+    - debug:
+        var: swap_status.stdout
+
+################################# Installation of DNS - Domain Name Service ############################################
+
+- name: Set up BIND9 DNS server on headnode
+  hosts: head_nodes
+  become: yes
+  tags: dns
+  tasks:
+    - name: Install BIND9 and dnsutils
+      ansible.builtin.apt:
+        name:
+          - bind9
+          - dnsutils       
+        state: present
+
+    - name: Create forward zone file
+      template:
+        src: forward.zone.j2
+        dest: "/etc/bind/db.{{ cluster_domain_name }}"
+        owner: bind
+        group: bind
+        mode: '0644'
+
+    - name: Create reverse zone file
+      template:
+        src: reverse.zone.j2
+        dest: "/etc/bind/db.{{ reverse_network }}.in-addr.arpa"
+        owner: bind
+        group: bind
+        mode: '0644'
+
+    - name: Configure named.conf.local
+      template:
+        src: named.conf.local.j2
+        dest: /etc/bind/named.conf.local
+        owner: bind
+        group: bind
+        mode: '0644'
+
+    - name: Restart BIND9 service
+      service:
+        name: bind9
+        state: restarted
+        enabled: yes
+
+- hosts: all
+  become: yes
+  tags: dns
+  tasks:
+    - name: Get the name of the wired connection
+      shell: nmcli -t -f NAME con show | grep "Wired"
+      register: connection_name
+      changed_when: false
+
+    - name: Trim trailing newline from connection name
+      set_fact:
+        connection_name_trimmed: "{{ connection_name.stdout.strip() }}"
+
+    - name: Configure DNS servers for the dynamic connection
+      shell: nmcli con mod "{{ connection_name_trimmed }}" ipv4.dns "{{ dns_server }} {{ backup_dns_server }}"
+
+    - name: Set DNS priority for the dynamic connection
+      shell: nmcli con mod "{{ connection_name_trimmed }}" ipv4.dns-search {{ cluster_domain_name }}
+
+    - name: Set DNS priority for the dynamic connection
+      shell: nmcli con mod "{{ connection_name_trimmed }}" ipv4.dns-priority 100
+      notify: Restart NetworkManager
+
+  handlers:
+    - name: Restart NetworkManager
+      systemd:
+        name: NetworkManager
+        state: restarted
+
+
+################################# Installation of NFS - Network Shared Storage ############################################
+
+- name: Set up NFS Server
+  hosts: head_nodes
+  become: true
+  tags: nfs
+  tasks:
+    - name: Install NFS server packages
+      ansible.builtin.apt:
+        name: nfs-kernel-server
+        state: present
+        update_cache: yes
+
+    - name: Check if /{{ nfs_dir_name }} directory exists
+      ansible.builtin.stat:
+        path: /{{ nfs_dir_name }}
+      register: fs_status
+
+    - name: Create mount directory
+      file:
+        path: /{{ nfs_dir_name }}
+        state: directory
+        mode: "0777"
+      when: fs_status.stat.exists == False
+    
+    - name: Get UUID of external SSD
+      command: blkid -s UUID -o value /dev/sda1
+      register: blkid_result
+      changed_when: false
+
+    - name: Add entry to /etc/fstab for external SSD
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "UUID={{ blkid_result.stdout }} /{{ nfs_dir_name }} ext4 defaults 0 2"
+        create: yes
+        insertafter: EOF
+      when: blkid_result.stdout is defined
+
+    - name: Configure export directory
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        line: "/{{ nfs_dir_name }} {{ cluster_network }}/24(rw,sync,no_subtree_check)"
+        create: yes
+
+    - name: Apply NFS export configuration
+      ansible.builtin.command: exportfs -ra
+
+    - name: Start and enable NFS server
+      ansible.builtin.service:
+        name: nfs-kernel-server
+        state: started
+        enabled: true
+
+
+- name: Set up NFS Clients
+  hosts: computing_nodes
+  become: true
+  tags: nfs
+  tasks:
+    - name: Install NFS client packages
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+        update_cache: yes
+
+    - name: Create mount point
+      ansible.builtin.file:
+        path: /{{ nfs_dir_name }}
+        state: directory
+        mode: '0777'
+      ignore_errors: true
+
+    - name: Mount NFS share
+      ansible.builtin.mount:
+        src: "{{ groups['head_nodes'][0] }}:/{{ nfs_dir_name }}"
+        path: /{{ nfs_dir_name }}
+        fstype: nfs
+        opts: rw
+        state: mounted
+      ignore_errors: true
+
+    - name: Ensure NFS share is mounted at boot
+      ansible.builtin.mount:
+        src: "{{ groups['head_nodes'][0] }}:/{{ nfs_dir_name }}"
+        path: /{{ nfs_dir_name }}
+        fstype: nfs
+        opts: rw
+        state: present
+      ignore_errors: true
+
+- name: Verify that NFS share is mounted
+  hosts: head_nodes,computing_nodes
+  become: true
+  tags: 
+    - nfs
+    - checks
+  tasks:
+    - name: Check if /{{ nfs_dir_name }} is mounted
+      command: mountpoint -q /{{ nfs_dir_name }}
+      register: mountpoint_check
+      failed_when: false
+
+    - name: Determine if /{{ nfs_dir_name }} is mounted
+      debug:
+        msg: "/{{ nfs_dir_name }} is mounted"
+      when: mountpoint_check.rc == 0
+
+    - name: Determine if /{{ nfs_dir_name }} is not mounted
+      debug:
+        msg: "/{{ nfs_dir_name }} is not mounted"
+      when: mountpoint_check.rc != 0
+
+
+################################# Installation and Configuration of Slurm ############################################
+
+- name: Slurm Setup
+  hosts: all
+  become: true
+  tags: slurm
+  tasks:
+    - name: Install required packages for Slurm and dependencies
+      ansible.builtin.apt:
+        name:
+          - slurm-wlm
+          - libpmix-dev
+          - munge
+          - libmunge-dev
+          - slurm-client
+          - slurm-wlm-basic-plugins
+          - hwloc          
+        state: present
+
+    - name: Generate munge key if not exists
+      command: mungekey
+      args:
+        creates: /etc/munge/munge.key
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Set permissions on munge key
+      file:
+        path: /etc/munge/munge.key
+        owner: munge
+        group: munge
+        mode: '0400'
+      when: inventory_hostname in groups['head_nodes']
+
+- name: Copy munge key to computing nodes
+  hosts: head_nodes
+  become: true
+  tags: slurm
+  tasks:
+    - name: Install required packages for Slurm on the headnode
+      ansible.builtin.apt:
+        name:
+          - slurmctld
+        state: present
+
+    - name: Copy munge key to local path for distribution
+      copy:
+        src: /etc/munge/munge.key
+        dest: /tmp/munge.key
+        remote_src: yes
+
+    - name: Copy munge key to computing nodes
+      ansible.builtin.copy:
+        src: /tmp/munge.key
+        dest: /etc/munge/munge.key
+        owner: munge
+        group: munge
+        mode: '0400'
+        remote_src: no
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['computing_nodes'] }}"   
+
+- name: Slurm start and configuration
+  hosts: all
+  become: true
+  tags:
+    - slurm
+  tasks:
+    - name: Start and enable MUNGE service
+      ansible.builtin.service:
+        name: munge
+        state: started
+        enabled: true
+      notify:   
+        - Restart Slurmctld
+        - Restart Slurmd    
+
+    - name: Restarting Check for Munge
+      ansible.builtin.service:
+        name: munge
+        state: restarted
+      register: munge_restart
+      failed_when: munge_restart.failed
+
+    - name: Display debug message for Munge key
+      debug:
+        msg: "Munge key is set correctly"
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Configure Slurm
+      template:
+        src: slurm.conf.j2
+        dest: /etc/slurm/slurm.conf
+      when: inventory_hostname in groups['head_nodes'] or inventory_hostname in groups['computing_nodes']
+      tags: slurm-config
+
+    - name: Generate cgroup.conf for Slurm
+      template:
+        src: cgroup.conf.j2
+        dest: /etc/slurm/cgroup.conf    
+      tags: slurm-config
+
+    - name: Start and enable Slurm control daemon on head node
+      ansible.builtin.service:
+        name: slurmctld
+        state: started
+        enabled: true
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Start and enable Slurm daemon on computing nodes
+      ansible.builtin.service:
+        name: slurmd
+        state: started
+        enabled: true
+      when: inventory_hostname in groups['computing_nodes']
+
+- name: Add Slurm Accounting
+  hosts: head_nodes
+  become: yes
+  tags:
+    - slurm
+    - slurm-accounting
+  tasks:
+    - name: Install MariaDB (or MySQL) for Slurm Accounting
+      apt:
+        name: mariadb-server
+        state: present
+
+    - name: Install PyMySQL for Ansible MySQL modules
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Start MariaDB service
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Set MariaDB root password via Unix Socket
+      mysql_user:
+        name: root
+        host: "{{ groups['head_nodes'][0] }}"
+        password: "{{ root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+      when: root_password != ''
+
+    - name: Remove anonymous users
+      mysql_user:
+        name: ''
+        host_all: yes
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: absent
+
+    - name: Remove test database
+      command: mysql --socket=/var/run/mysqld/mysqld.sock -e "DROP DATABASE IF EXISTS test"
+
+    - name: Flush privileges
+      command: mysql --socket=/var/run/mysqld/mysqld.sock -e "FLUSH PRIVILEGES"    
+   
+    - name: Create Slurm accounting database
+      mysql_db:
+        name: slurm_acct_db
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Create Slurm accounting user and grant privileges
+      mysql_user:
+        name: "{{ slurmuser }}"
+        password: "{{ mariadb_slurm_password }}"
+        priv: "slurm_acct_db.*:ALL"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Set bind-address to 0.0.0.0 in MariaDB configuration
+      lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 0.0.0.0'
+        state: present
+
+    - name: Grant privileges to slurm user for {{ groups['head_nodes'][0] }}.{{ cluster_domain_name }}
+      mysql_user:
+        name: "{{ slurmuser }}"
+        host: "{{ groups['head_nodes'][0] }}.{{ cluster_domain_name }}"
+        password: "{{ mariadb_slurm_password }}"
+        priv: "slurm_acct_db.*:ALL"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Install Slurm accounting package
+      apt:
+        name: slurmdbd
+        state: present
+
+    - name: Configure SlurmDBD
+      template:
+        src: slurmdbd.conf.j2
+        dest: /etc/slurm/slurmdbd.conf
+        owner: slurm
+        group: slurm            
+        mode: 0600
+      tags: slurm-config
+
+    - name: Start and enable SlurmDBD service
+      service:
+        name: slurmdbd
+        state: started
+        enabled: yes
+
+    - name: Restart Slurm Controller to apply accounting changes
+      service:
+        name: slurmctld
+        state: restarted
+
+    - name: Ensure the /etc/my.cnf.d directory exists
+      file:
+        path: /etc/my.cnf.d
+        state: directory
+        mode: '0755'
+      tags: slurm-config
+
+    - name: Modify the ExecStart line to include --num-threads=10
+      lineinfile:
+        path: /etc/systemd/system/munge.service.d/override.conf
+        create: yes
+        regexp: '^ExecStart='
+        line: 'ExecStart=/usr/sbin/munged --num-threads=10'
+        state: present
+
+    - name: Create innodb.cnf file with InnoDB settings
+      copy:
+        dest: /etc/my.cnf.d/innodb.cnf
+        content: |
+          [mysqld]
+          innodb_buffer_pool_size=4G
+          innodb_log_file_size=64M
+          innodb_lock_wait_timeout=900
+        mode: '0755'
+
+    - name: Set proper permissions for MariaDB data directory
+      ansible.builtin.file:
+        path: /var/lib/mysql
+        owner: mysql
+        group: mysql
+        mode: '0755'
+        recurse: yes
+
+    - name: Ensure 'mysql' user is configured in my.cnf
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^user='
+        line: 'user = mysql'
+        state: present
+
+    - name: Ensure max_connections is set to 500 in my.cnf
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^max_connections'
+        line: 'max_connections = 500'
+        state: present
+
+    - name: Restart MySQL/MariaDB service to apply changes
+      service:
+        name: mariadb
+        state: restarted
+
+- name: Ensure slurmctld and slurmdbd run as slurm user
+  hosts: head_nodes
+  become: yes
+  tags:
+    - slurm
+    - slurm-fix  
+  tasks:
+    - name: Add user to the slurm group
+      user:
+        name: "{{ username }}"
+        groups: "{{ slurmuser }}"
+        append: yes
+
+    - name: Set Userrights for Slurm-Binärydata
+      file:
+        path: "{{ item }}"
+        owner: root
+        group: "{{ slurmuser }}"
+        mode: '0750'
+      loop:
+        - /usr/bin/sinfo
+        - /usr/bin/scontrol
+        - /usr/bin/sbatch
+        - /usr/bin/srun
+        - /usr/bin/sacctmgr
+        - /usr/bin/sacct
+        - /usr/bin/sstat
+
+    - name: User needs to relog for changes to apply
+      debug:
+        msg: "Please relog the user for changes to apply"
+
+    - name: Set slurmctld service to run as slurm user
+      lineinfile:
+        path: /lib/systemd/system/slurmctld.service
+        insertafter: '^\[Service\]'
+        line: 'User=root'
+        create: yes
+
+    - name: Set slurmdbd service to run as slurm user
+      lineinfile:
+        path: /lib/systemd/system/slurmdbd.service
+        insertafter: '^\[Service\]'
+        line: 'User=root'
+        create: yes
+
+    - name: Set slurmd service to run as slurm user
+      lineinfile:
+        path: /lib/systemd/system/slurmd.service
+        insertafter: '^\[Service\]'
+        line: 'User=root'
+        create: yes
+
+    - name: Find all files in /etc/slurm
+      find:
+        paths: /etc/slurm
+        file_type: file
+      register: slurm_etc_files
+
+    - name: Change permissions of all files in /etc/slurm to 0644
+      file:
+        path: "{{ item.path }}"
+        mode: '0644'
+        owner: "{{  slurmuser  }}"
+        group: "{{  slurmuser  }}"            
+      with_items: "{{ slurm_etc_files.files }}"    
+
+    - name: Find all files in /etc/slurm
+      find:
+        paths: /var/log/slurm
+        file_type: file
+      register: slurm_var_files
+
+    - name: Change permissions of all files in /var/log/slurm to 0644
+      file:
+        path: "{{ item.path }}"
+        mode: '0644'
+        owner: "{{ slurmuser }}"
+        group: "{{ slurmuser }}"            
+      with_items: "{{ slurm_var_files.files }}"    
+
+- name: Ensure slurmd is run as slurm user
+  hosts: computing_nodes
+  become: yes
+  tags:
+    - slurm
+    - slurm-fix  
+  tasks:
+    - name: Set slurmd service to run as slurm user
+      lineinfile:
+        path: /lib/systemd/system/slurmd.service
+        insertafter: '^\[Service\]'
+        line: 'User=root'
+        create: yes
+
+    - name: Reload systemd daemon on compute nodes
+      command: systemctl daemon-reload
+
+    - name: Restart slurmd service
+      service:
+        name: slurmd
+        state: restarted
+
+    - name: Find all files in /etc/slurm
+      find:
+        paths: /etc/slurm
+        file_type: file
+      register: slurm_etc_files
+
+    - name: Change permissions of all files in /etc/slurm to 0640
+      file:
+        path: "{{ item.path }}"
+        mode: '0640'
+        owner: "{{ slurmuser }}"
+        group: "{{ slurmuser }}"        
+      with_items: "{{ slurm_etc_files.files }}"    
+
+    - name: Find all files in /etc/slurm
+      find:
+        paths: /var/log/slurm
+        file_type: file
+      register: slurm_var_files
+
+    - name: Change permissions of all files in /var/log/slurm to 0640
+      file:
+        path: "{{ item.path }}"
+        mode: '0640'
+        owner: "{{ slurmuser }}"
+        group: "{{ slurmuser }}"           
+      with_items: "{{ slurm_var_files.files }}"    
+
+################################# Installation and Configuration of Prometheus ############################################
+
+- name: Install and configure Prometheus
+  hosts: head_nodes
+  become: true
+  tags:
+    - prometheus
+  tasks:
+    - name: Install required packages for Prometheus
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - curl
+        - gnupg2
+
+    - name: Install Prometheus package
+      ansible.builtin.apt:
+        name: prometheus
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Prometheus service
+      ansible.builtin.service:
+        name: prometheus
+        state: started
+        enabled: true
+
+- name: Install and configure Node Exporter on computing nodes
+  hosts: computing_nodes
+  become: true
+  tags:
+    - prometheus
+    - node_exporter
+  tasks:
+    - name: Create a System User for the Node Exporter
+      user:
+        name: "{{ node_exporter_user }}"
+        system: yes
+        shell: /sbin/nologin
+
+
+    - name: Download Node Exporter binary for ARM64
+      ansible.builtin.get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+        dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+
+    - name: Extract Node Exporter
+      ansible.builtin.unarchive:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        dest: "/usr/local/bin/"
+        remote_src: yes
+        creates: "/usr/local/bin/node_exporter"
+
+    - name: Create Node Exporter systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User={{ node_exporter_user }}
+          Group={{ node_exporter_user }}
+          Type=simple
+          ExecStart=/usr/local/bin/node_exporter-{{ node_exporter_version }}.linux-arm64/node_exporter
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd to apply new service
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Start and enable Node Exporter service
+      ansible.builtin.service:
+        name: node_exporter
+        state: started
+        enabled: true
+
+    - name: Check for Node Exporter to run
+      command: curl {{ ansible_host }}:9100/metrics
+      register: curl_output
+
+- name: Generate Prometheus configuration file
+  hosts: head_nodes
+  become: true
+  tags:
+    - prometheus
+    - config
+  vars:
+    prometheus_config_path: /etc/prometheus/prometheus.yml
+  tasks:
+    - name: Generate Prometheus configuration from template
+      ansible.builtin.template:
+        src: prometheus.yml.j2
+        dest: "{{ prometheus_config_path }}"
+        owner: prometheus
+        group: prometheus
+        mode: '0600'
+      notify:
+        - Restart Prometheus
+
+  handlers:
+    - name: Restart Prometheus
+      ansible.builtin.service:
+        name: prometheus
+        state: restarted
+
+################################# Installation and Configuration of Grafana ############################################
+
+- name: Install Grafana from APT repository
+  hosts: head_nodes
+  become: yes
+  tags:
+    - grafana
+    - install
+  tasks:
+
+    - name: Install prerequisite packages
+      apt:
+        name:
+          - apt-transport-https
+          - software-properties-common
+          - wget
+        state: present
+        update_cache: yes
+
+    - name: Create directory for GPG key
+      file:
+        path: /etc/apt/keyrings/
+        state: directory
+        mode: '0755'
+
+    - name: Import the GPG key for Grafana
+      ansible.builtin.shell: |
+        wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/grafana.gpg > /dev/null
+      args:
+        creates: /etc/apt/keyrings/grafana.gpg
+
+    - name: Add Grafana APT repository
+      ansible.builtin.shell: |
+        echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | tee -a /etc/apt/sources.list.d/grafana.list
+      args:
+        creates: /etc/apt/sources.list.d/grafana.list
+
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+
+    - name: Install Grafana OSS
+      apt:
+        name: grafana
+        state: present
+
+- name: Ensure Grafana plugin directories exist and have correct permissions
+  hosts: head_nodes
+  become: true
+
+  tasks:
+    - name: Create /var/lib/grafana/plugins directory
+      ansible.builtin.file:
+        path: /var/lib/grafana/plugins
+        state: directory
+        owner: grafana
+        group: grafana
+        mode: '0755'
+
+    - name: Create /usr/share/grafana/plugins directory
+      ansible.builtin.file:
+        path: /usr/share/grafana/plugins
+        state: directory
+        owner: grafana
+        group: grafana
+        mode: '0755'
+
+- name: Generate configuration file for Grafana
+  hosts: head_nodes
+  become: true
+  tags:
+    - grafana
+    - config
+  tasks:
+    - name: Generate Grafana configuration file
+      ansible.builtin.template:
+        src: grafana.ini.j2
+        dest: /etc/grafana/grafana.ini
+
+    - name: Generate Grafana datasource configuration file
+      ansible.builtin.template:
+        src: datasources.yml.j2
+        dest: /etc/grafana/provisioning/datasources/datasources.yml
+
+    - name: Copy dashboard provisioning file
+      ansible.builtin.copy:
+        src: dashboards.yml
+        dest: /etc/grafana/provisioning/dashboards/dashboards.yml
+
+    - name: Create directory for node-exporter-full dashboard
+      ansible.builtin.file:
+        path: /etc/grafana/provisioning/dashboards/node-exporter-full
+        state: directory
+        mode: '0755'
+
+    - name: Copy node-exporter-full dashboard json
+      ansible.builtin.copy:
+        src: node-exporter-full.json
+        dest: /etc/grafana/provisioning/dashboards/node-exporter-full/node-exporter-full.json
+      notify:
+        - Restart Grafana
+
+  handlers:
+    - name: Restart Grafana
+      ansible.builtin.service:
+        name: grafana-server
+        state: restarted
+
+################################# Installation and Configuration of Telegraf ############################################
+
+- name: Install Telegraf
+  hosts: all
+  become: true
+  tags: telegraf
+  tasks:
+    - name: Check if Telegraf tarball is already downloaded
+      stat:
+        path: "/tmp/telegraf.tar.gz"
+      register: telegraf_tarball  
+
+    - name: Download Telegraf tarball for ARMv8
+      ansible.builtin.get_url:
+        url: "https://dl.influxdata.com/telegraf/releases/telegraf-1.31.3_linux_arm64.tar.gz"
+        dest: "/tmp/telegraf.tar.gz"
+      when: not telegraf_tarball.stat.exists
+
+    - name: Extract Telegraf tarball
+      ansible.builtin.unarchive:
+        src: "/tmp/telegraf.tar.gz"
+        dest: "/usr/local/bin/"
+        remote_src: true
+        creates: "/usr/local/bin/telegraf"
+
+    - name: Ensure Telegraf binary is executable
+      ansible.builtin.file:
+        path: "/usr/local/bin/telegraf-1.31.3/usr/bin/telegraf"
+        mode: "0755"
+
+    - name: Create Telegraf config directory
+      ansible.builtin.file:
+        path: /etc/telegraf
+        state: directory
+
+    - name: Create Telegraf systemd service file
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/telegraf.service
+        content: |
+          [Unit]
+          Description=Telegraf
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/telegraf-1.31.3//usr/bin/telegraf --config /etc/telegraf/telegraf.conf
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Start and enable Telegraf service
+      ansible.builtin.systemd:
+        name: telegraf
+        state: started
+        enabled: true
+
+    - name: Check /tmp permissions after downloading Telegraf package
+      ansible.builtin.command: stat -c "%a %n" /tmp
+      register: tmp_permissions_before
+      tags: debug
+
+    - name: Debug /tmp permissions after downloading and installing Telegraf
+      ansible.builtin.debug:
+        var: tmp_permissions_before
+      tags: debug
+
+
+################################# Installation and Configuration of InfluxDB2 ############################################
+
+- name: Install and configure InfluxDB2
+  hosts: head_nodes
+  become: true
+  tags: influxdb2
+  tasks:
+    - name: Install required packages for InfluxDB
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - curl
+        - gnupg2
+
+    - name: Check /tmp permissions before downloading InfluxDB package
+      ansible.builtin.command: stat -c "%a %n" /tmp
+      register: tmp_permissions_before
+      tags: debug
+
+    - name: Debug /tmp permissions before downloading
+      ansible.builtin.debug:
+        var: tmp_permissions_before
+      tags: debug
+
+    - name: Check if InfluxDB 2.x package is already downloaded
+      stat:
+        path: "/tmp/influxdb2-arm64.deb"
+      register: influxdb_package
+
+    - name: Download InfluxDB 2.x package for ARMv8 if not already downloaded
+      ansible.builtin.get_url:
+        url: "https://dl.influxdata.com/influxdb/releases/influxdb2-{{ influxdb2_version }}-arm64.deb"
+        dest: "/tmp/influxdb2-arm64.deb"
+      when: not influxdb_package.stat.exists
+
+    - name: Install InfluxDB 2.x package
+      ansible.builtin.apt:
+        deb: "/tmp/influxdb2-arm64.deb"
+        state: present
+
+    - name: Start and enable InfluxDB service
+      ansible.builtin.systemd:
+        name: influxdb
+        state: started
+        enabled: true
+
+- name: Install and configure InfluxDB CLI
+  hosts: head_nodes
+  become: true
+  tags: influxdb2  
+  tasks:
+    - name: Download InfluxDB 2 CLI package for ARM64
+      ansible.builtin.get_url:
+        url: "https://dl.influxdata.com/influxdb/releases/influxdb2-client-2.7.1-linux-arm64.tar.gz"
+        dest: "/tmp/influxdb2-client.tar.gz"
+
+    - name: Extract InfluxDB 2 CLI package
+      ansible.builtin.unarchive:
+        src: "/tmp/influxdb2-client.tar.gz"
+        dest: "/tmp/"
+        remote_src: true
+
+    - name: Copy InfluxDB 2 CLI to /usr/local/bin
+      ansible.builtin.copy:
+        src: "/tmp/influx"
+        dest: "/usr/local/bin/influx"
+        mode: '0755'
+        remote_src: true  
+
+    - name: Verify InfluxDB 2 CLI installation
+      ansible.builtin.command: which influx
+      register: influx_cli_check
+
+    - name: Show InfluxDB CLI path
+      ansible.builtin.debug:
+        msg: "InfluxDB CLI found at {{ influx_cli_check.stdout }}"
+    
+    - name: Check /tmp permissions after downloading InfluxDB package
+      ansible.builtin.command: stat -c "%a %n" /tmp
+      register: tmp_permissions_before
+      tags: debug
+
+    - name: Debug /tmp permissions after downloading and installing Influxdb
+      ansible.builtin.debug:
+        var: tmp_permissions_before
+      tags: debug
+
+- name: Setup InfluxDB 2.x and capture admin token
+  hosts: head_nodes
+  become: true
+  tags: influxdb2
+  tasks:
+    - name: Check if InfluxDB is already set up
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/setup"
+        method: GET
+        status_code: 200, 204
+        return_content: yes
+      register: influxdb_setup_status
+      ignore_errors: yes
+
+    - name: Generate a random InfluxDB token if not set up
+      ansible.builtin.command: openssl rand -base64 32
+      register: generated_token
+      when: influxdb_setup_status.json.allowed == true
+
+    - name: Set the generated token as a fact if not set up
+      ansible.builtin.set_fact:
+        influxdb_initial_token: "{{ generated_token.stdout }}"
+      when: influxdb_setup_status.json.allowed == true
+
+    - name: Run InfluxDB 2.x initial setup
+      ansible.builtin.command: >
+        influx setup
+        --name "{{ influxdb_org_name }}-config"
+        --username "{{ influxdb_admin_user }}"
+        --password "{{ influxdb_admin_password }}"
+        --org "{{ influxdb_org_name }}"
+        --bucket "{{ influxdb_bucket_name }}"
+        --retention "{{ influxdb_data_retention }}"
+        --token "{{ influxdb_initial_token }}"
+        --force
+      when: influxdb_setup_status.status == 200 and influxdb_setup_status.json.allowed == true
+      register: influxdb_setup_output
+      ignore_errors: yes
+
+    - name: List InfluxDB auth tokens
+      ansible.builtin.command: influx auth list --user "{{ influxdb_admin_user }}" --hide-headers
+      register: influxdb_token_output
+      when: influxdb_setup_status.json.allowed == false
+
+    - name: Debugging InfluxDB auth tokens output - show all tokens
+      ansible.builtin.debug:
+        var: influxdb_token_output.stdout_lines
+      tags: debug
+
+    - name: Set the existing token as a fact
+      ansible.builtin.set_fact:
+        influxdb_initial_token: "{{ influxdb_token_output.stdout_lines[0].split('\t')[2] }}"
+      when: influxdb_setup_status.json.allowed == false
+
+    - name: Debugging InfluxDB token before API call
+      ansible.builtin.debug:
+        msg: "Token being used: {{ influxdb_initial_token }}"
+      tags: debug
+
+    - name: Add INFLUX_TOKEN to /etc/environment
+      lineinfile:
+        path: /etc/environment
+        line: 'INFLUX_TOKEN={{ influxdb_initial_token }}'
+        state: present
+
+    - name: Copy env file to computing nodes
+      ansible.builtin.copy:
+        src: /etc/environment
+        dest: /etc/environment
+        owner: root
+        group: root
+        mode: '0644'
+        remote_src: no
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['computing_nodes'] }}"   
+
+    - name: Source /etc/environment
+      shell: . /etc/environment
+      args:
+        executable: /bin/bash
+      register: source_env_output
+
+    - name: Verify INFLUX_TOKEN is available
+      shell: echo $INFLUX_TOKEN
+      args:
+        executable: /bin/bash
+      register: influx_token_check
+
+    - name: Debug the sourced INFLUX_TOKEN
+      debug:
+        msg: "INFLUX_TOKEN is: {{ influx_token_check.stdout }}"
+
+    - name: Get InfluxDB Org ID
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/orgs?org={{ influxdb_org_name }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ influxdb_initial_token }}"
+          Content-Type: "application/json"
+        return_content: yes
+      register: influxdb_org_info
+    
+    - name: Set InfluxDB Org ID as a fact
+      ansible.builtin.set_fact:
+        influxdb_org_id: "{{ influxdb_org_info.json.orgs[0].id }}"
+    
+    - name: Check if Prometheus data source already exists
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/sources"
+        method: GET
+        headers:
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Content-Type: "application/json"
+        return_content: yes
+      register: influxdb_sources
+
+    - name: Set fact if Prometheus data source exists
+      ansible.builtin.set_fact:
+        prometheus_source_id: "{{ item.id }}"
+      loop: "{{ influxdb_sources.json.sources }}"
+      when: item.name == "Prometheus"
+
+    - name: Create Prometheus data source if it does not exist
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/sources"
+        method: POST
+        headers:
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "Prometheus"
+          type: "prometheus"
+          url: "http://{{ ansible_host }}:9090"
+          orgID: "{{ influxdb_org_id }}"
+          default: true
+        status_code: 201
+      when: prometheus_source_id is not defined
+
+    - name: Update Prometheus data source to be default if it exists
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/sources/{{ prometheus_source_id }}"
+        method: PATCH
+        headers:
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          default: true
+        status_code: 200
+      when: prometheus_source_id is defined
+
+- name: Copy parse_vcgencmd.py to all Nodes
+  hosts: all
+  become: yes
+  tags: 
+    - influxdb2
+    - config
+    - telegraf
+  tasks:
+    - name: Copy parse_vcgencmd.py to Nodes
+      copy:
+        src: ../scripts/processing/parse_vcgencmd.py
+        dest: "/etc/telegraf/parse_vcgencmd.py"
+        mode: '0755'
+
+    - name: Check if parse_vcgencmd.py is runnable
+      file:
+        path: "/etc/telegraf/parse_vcgencmd.py"
+        mode: '0755'
+        owner: root
+        group: root
+        state: file
+
+    - name: Check, if script was successfully copied
+      command: ls -l /etc/telegraf/parse_vcgencmd.py
+      register: result
+
+    - name: Show result
+      debug:
+        msg: "{{ result.stdout }}"
+
+
+- name: Create Telegraf configuration file
+  hosts: all
+  become: true
+  tags: 
+    - influxdb2
+    - config
+    - telegraf
+  tasks:
+    - name: Create Telegraf config from template
+      ansible.builtin.template:
+        src: telegraf.conf.j2
+        dest: /etc/telegraf/telegraf.conf
+      notify:
+        - Restart Telegraf
+        
+  handlers:
+    - name: Restart Telegraf
+      ansible.builtin.service:
+        name: telegraf
+        state: restarted
+
+- name: Add Telegraf to Influxdb2
+  hosts: head_nodes
+  become: true
+  tags: 
+    - influxdb2
+    - config
+    - telegraf
+  tasks:
+    - name: Check if Telegraf data source already exists
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/sources"
+        method: GET
+        headers:
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Content-Type: "application/json"
+        return_content: yes
+      register: influxdb_sources
+
+    - name: Set fact if Telegraf data source exists
+      ansible.builtin.set_fact:
+        telegraf_source_id: "{{ item.id }}"
+      loop: "{{ influxdb_sources.json.sources }}"
+      when: item.name == "Telegraf"
+
+    - name: Create Telegraf data source if it does not exist
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/sources"
+        method: POST
+        headers:
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "Telegraf"
+          type: "telegraf"
+          url: "http://{{ ansible_host }}:8092"
+          orgID: "{{ influxdb_org_id }}"
+          default: true
+        status_code: 201
+      when: telegraf_source_id is not defined
+
+    - name: Update Telegraf data source to be default if it exists
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/sources/{{ telegraf_source_id }}"
+        method: PATCH
+        headers:
+          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          default: true
+        status_code: 200
+      when: telegraf_source_id is defined
+   
+    - name: Ensure correct permissions on /tmp and restart Influxd and Influxdb services
+      ansible.builtin.file:
+        path: /tmp
+        mode: '1777'
+        state: directory
+      notify:
+        - Restart InfluxD   
+        - Restart InfluxDB
+
+  handlers:
+    - name: Restart InfluxD
+      ansible.builtin.service:
+        name: influxd
+        state: restarted
+
+    - name: Restart InfluxDB
+      ansible.builtin.service:
+        name: influxdb
+        state: restarted
+
+################################# Setup MQTT and Telegraf for Shelly devices ############################################
+
+- name: Setup MQTT and Telegraf for Shelly devices
+  hosts: head_nodes
+  become: yes
+  tags: mqtt
+  tasks:
+    - name: Install Mosquitto MQTT Broker and Client
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - mosquitto
+        - mosquitto-clients        
+
+    - name: Ensure Mosquitto is running and enabled
+      service:
+        name: mosquitto
+        state: started
+        enabled: yes
+
+- name: Deploy Mosquitto configuration file to all cluster nodes
+  hosts: all
+  become: yes
+  tags: mqtt
+  tasks:
+    - name: Ensure the /etc/mosquitto/conf.d/ directory exists
+      file:
+        path: /etc/mosquitto/conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy the Mosquitto configuration file
+      copy:
+        src: mosquitto.conf
+        dest: /etc/mosquitto/conf.d/mosquitto.conf
+        owner: root
+        group: root
+        mode: '0644'   
+
+- name: Configure Shelly devices to send data to MQTT broker
+  hosts: all
+  become: yes
+  tags: mqtt
+  tasks:  
+    - name: Set Shelly devices to send data to MQTT
+      uri:
+        url: "http://{{ item.ip }}/rpc"
+        method: POST
+        body_format: json
+        body:
+          id: 1
+          method: "MQTT.SetConfig"
+          params:
+            config:
+              client_id: "{{ item.name }}"
+              topic_prefix: "{{ item.name }}"
+              enable: true
+              server: "{{ hostvars[groups['head_nodes'][0]].ansible_host }}:{{ mqtt_broker_port }}"
+              enable_control: true
+              rpc_ntf: true
+              status_ntf: true
+        headers:
+          Content-Type: "application/json"
+        status_code: 200
+      loop: "{{ shelly_devices }}"
+
+    - name: Reboot Shelly devices if needed
+      uri:
+        url: "http://{{ item.ip }}/rpc"
+        method: POST
+        body_format: json
+        body:
+          id: 1
+          method: "Shelly.Reboot"
+        headers:
+          Content-Type: "application/json"
+        status_code: 200
+      loop: "{{ shelly_devices }}"
+      ignore_errors: true
+
+    - name: Wait for Shelly devices to come back online
+      wait_for:
+        host: "{{ item.ip }}"
+        port: 80
+        delay: 10
+        timeout: 60
+        state: started
+      loop: "{{ shelly_devices }}"
+
+- name: Restart Mosquitto service to apply the new configuration
+  hosts: head_nodes
+  become: yes
+  tags: mqtt
+  tasks:
+    - name: Restart Mosquitto service to apply the new configuration
+      service:
+        name: mosquitto
+        state: restarted
+################################# Setup Python ############################################
+
+- name: Install required packages for python3
+  hosts: all
+  become: yes
+  tags: 
+    - python
+    - mpi
+  tasks:
+    - name: Update APT package list
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - python3-pip
+          - python3-dev
+          - libopenmpi-dev
+          - python3-mpi4py
+          - python3-numpy
+        state: present
+        update_cache: yes
+
+################################# Install Reframe from Git and CLANG #########################################
+
+- name: Install clang using apt
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure clang is installed
+      apt:
+        name: clang
+        state: present
+      tags:
+        - install
+        - clang
+
+    - name: Add clang to the PATH environment variable
+      ansible.builtin.lineinfile:
+        path: /home/{{ username }}/.bashrc
+        line: 'export PATH=/usr/bin:$PATH'
+        state: present
+        insertafter: EOF
+      tags:
+        - config
+        - clang
+
+    - name: Apply changes to the current session
+      ansible.builtin.shell: |
+        . /home/{{ username }}/.bashrc
+      args:
+        executable: /bin/bash
+      tags:
+        - apply
+        - clang
+
+- name: Install libomp for OpenMP support in Clang
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure libomp-dev is installed for OpenMP support
+      apt:
+        name: libomp-dev
+        state: present
+      tags:
+        - install
+        - clang
+
+
+- name: Install and Configure ReFrame using GitHub
+  hosts: head_nodes
+  become: yes
+  tags: 
+    - reframe
+  tasks: 
+    - name: Create Reframe directory
+      ansible.builtin.file:
+        path: /{{ nfs_dir_name }}/reframe
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+      tags:
+        - setup
+        - config
+
+    - name: Deploy Reframe configuration file as reframe.py
+      template:
+        src: reframe.py.j2
+        dest: /{{ nfs_dir_name }}/reframe/reframe.py
+      tags: 
+        - reframe-config
+        - config
+
+    - name: Clone specific ReFrame version from GitHub
+      ansible.builtin.shell: |
+        cd /{{ nfs_dir_name }}
+        if [ ! -d "{{ nfs_dir_name }}/reframe-git" ]; then
+          git clone -q --depth 1 --branch {{ reframe_version }} https://github.com/reframe-hpc/reframe.git reframe-git
+        fi
+        cd reframe-git && ./bootstrap.sh
+        export PATH=/{{ nfs_dir_name }}/reframe-git/bin:$PATH
+      tags:
+        - reframe
+        - git
+
+    - name: Ensure correct ownership of ReFrame directory
+      ansible.builtin.file:
+        path: /{{ nfs_dir_name }}/reframe-git
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        recurse: yes
+      tags:
+        - permissions
+        - setup
+
+    - name: Enable ReFrame auto-completion for Bash
+      ansible.builtin.shell: |
+        echo '. /{{ nfs_dir_name }}/reframe-git/share/completions/reframe.bash' >> /home/{{ username }}/.bashrc
+      when: ansible_env.SHELL == "/bin/bash"
+      tags:
+        - reframe
+        - config
+
+    - name: Reload systemd daemon to recognize new service
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      tags:
+        - service
+        - config
+
+    - name: Enable and start ReFrame service
+      ansible.builtin.systemd:
+        name: reframe
+        enabled: yes
+        state: started
+      tags: 
+        - service
+        - config
+
+    - name: Add ReFrame to PATH in .bashrc
+      ansible.builtin.lineinfile:
+        path: /home/{{ username }}/.bashrc
+        line: 'export PATH=/{{ nfs_dir_name }}/reframe-git/bin:$PATH'
+        insertafter: EOF
+        state: present
+      tags:
+        - reframe
+        - config
+
+    - name: Source .bashrc to apply the changes
+      ansible.builtin.shell: |
+        . /home/{{ username }}/.bashrc
+      args:
+        executable: /bin/bash
+      tags:
+        - reframe
+        - config
+
+    - name: Clone CSCS ReFrame tests from GitHub
+      ansible.builtin.git:
+        repo: 'https://github.com/eth-cscs/cscs-reframe-tests.git'
+        dest: /{{ nfs_dir_name }}/cscs-reframe-tests
+        version: main
+      tags:
+        - reframe
+        - cscs-tests
+      ignore_errors: yes  
+
+    - name: List all CSCS ReFrame tests
+      ansible.builtin.shell: |
+        /{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/cscs-reframe-tests/config/cscs.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -l
+      args:
+        executable: /bin/bash
+      tags:
+        - reframe
+        - cscs-tests
+
+- name: Create cron jobs for ReFrame Benchmark
+  hosts: head_nodes
+  tags: 
+    - reframe
+    - reframe-cron
+  tasks: 
+  #  - name: Create cron job for ReFrame Benchmark
+  #    cron:
+  #      name: "Run ReFrame Benchmark Test"
+  #      minute: "0"
+  #      hour: "8"
+  #      job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system=cluster:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
+
+    - name: Make all scripts in /home/{{ username }}/clenman/scripts/mocking/ executable
+      file:
+        path: /home/{{ username }}/clenman/scripts/mocking/
+        recurse: yes
+        mode: '0755'
+        state: directory
+
+#    - name: Create cron job for ReFrame latency test every 30 minutes
+#      cron:
+#        name: "Run ReFrame Latency Test every 60 minutes"
+#        minute: "*/60"
+#        job: "/home/{{ username }}/clenman/scripts/mocking/latency_job.sh >> /var/log/reframe_cron.log 2>&1"
+
+    - name: Create cron job for ReFrame Benchmark every 30 minutes
+      cron:
+        name: "Run ReFrame Benchmark Test every 10 minutes"
+        minute: "*/30"  # Alle 30 Minuten
+        job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system={{ cluster_name }}:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
+
+    - name: Change ownership of /{{ nfs_dir_name }}/stage recursively to {{  username }}:{{  username }}
+      become: yes
+      ansible.builtin.command:
+        cmd: chown -R {{  username }}:{{  username }} /{{ nfs_dir_name }}/stage
+
+    - name: Change read/write of /{{ nfs_dir_name }}/stage recursively to 775
+      become: yes
+      ansible.builtin.command:
+        cmd: chmod -R 775 /{{ nfs_dir_name }}/stage
+
+################################# Generate own reframe checks in new folder #########################################
+
+- name: Move and render Jinja2 templates to target directory
+  hosts: head_nodes
+  tags: 
+    - reframe
+    - reframe-tests
+    - mocking
+  tasks:
+    - name: Ensure target directory exists
+      file:
+        path: /{{ nfs_dir_name }}/clenman-reframe-tests/checks
+        state: directory
+        mode: '0755'
+
+    - name: Ensure target directory exists
+      file:
+        path: /{{ nfs_dir_name }}/clenman-reframe-tests/scripts
+        state: directory
+        mode: '0755'
+
+    - name: Render Jinja2 templates and move to target directory
+      template:
+        src: "{{ item }}"
+        dest: "/{{ nfs_dir_name }}/clenman-reframe-tests/checks/{{ item | basename | regex_replace('.j2$', '') }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/clenman/scripts/benchmarks/*.j2', wantlist=True) }}"
+      delegate_to: localhost
+
+    - name: Render Jinja2 templates for mocking and move to target directory
+      template:
+        src: "{{ item }}"
+        dest: "/{{ nfs_dir_name }}/clenman-reframe-tests/scripts/{{ item | basename | regex_replace('.j2$', '') }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/clenman/scripts/mocking/*.j2', wantlist=True) }}"
+      delegate_to: localhost
+
+    - name: Find all .sh files in the target directory
+      ansible.builtin.find:
+        paths: "/{{ nfs_dir_name }}/clenman-reframe-tests/scripts"
+        recurse: yes
+        file_type: file
+        patterns: "*.sh"
+      register: sh_scripts_to_make_executable
+
+    - name: Make all found .sh scripts executable
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: '0755'
+      loop: "{{ sh_scripts_to_make_executable.files }}"
+
+
+################################# Osu Benchmark #########################################
+
+- name: Install OSU Micro-Benchmarks for ReFrame
+  hosts: head_nodes
+  become: yes
+  tags: 
+    - osu
+    - benchmarks
+  tasks:
+    - name: Download OSU Micro-Benchmarks
+      get_url:
+        url: "http://mvapich.cse.ohio-state.edu/download/mvapich/osu-micro-benchmarks-7.4.tar.gz"
+        dest: "/tmp/osu-micro-benchmarks.tar.gz"
+        mode: '0644'
+
+    - name: Extract OSU Micro-Benchmarks
+      unarchive:
+        src: "/tmp/osu-micro-benchmarks.tar.gz"
+        dest: "/usr/local"
+        remote_src: yes
+      register: extract_osu
+      notify: Compile OSU Micro-Benchmarks
+
+    - name: Ensure OSU Micro-Benchmarks binaries directory is in PATH
+      lineinfile:
+        path: /etc/profile.d/osu_benchmarks.sh
+        create: yes
+        line: 'export PATH=/usr/local/osu-micro-benchmarks-7.4/libexec/osu-micro-benchmarks/mpi/:$PATH'
+        state: present
+      notify: Load updated PATH
+
+  handlers:
+    - name: Compile OSU Micro-Benchmarks
+      shell: |
+        ./configure CC=mpicc
+        make
+      args:
+        chdir: /usr/local/osu-micro-benchmarks-7.4
+      environment:
+        PATH: "/usr/lib/openmpi/bin:{{ ansible_env.PATH }}"
+      when: extract_osu.changed
+
+    - name: Load updated PATH
+      shell: . /etc/profile.d/osu_benchmarks.sh
+      become: yes
+
+################################# HPL Benchmark #########################################
+
+- name: Install HPL and configure it for Raspberry Pi 5 cluster
+  hosts: head_nodes
+  become: yes
+  tags:
+    - hpl
+    - benchmarks
+  tasks:
+    - name: Ensure HPL directory exists
+      file:
+        path: "{{ hpl_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Install required packages for HPL
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - libopenblas-dev
+
+    - name: Download HPL source code
+      get_url:
+        url: "https://www.netlib.org/benchmark/hpl/hpl-{{ hpl_version }}.tar.gz"
+        dest: "/tmp/hpl-{{ hpl_version }}.tar.gz"
+
+    - name: Extract HPL source code
+      unarchive:
+        src: "/tmp/hpl-{{ hpl_version }}.tar.gz"
+        dest: "{{ hpl_dir }}"
+        remote_src: yes
+
+    - name: Build HPL using configure script
+      shell: |
+        cd {{ hpl_dir }}/hpl-{{ hpl_version }}
+        LDFLAGS=-L${HOME}/openblas/lib CFLAGS="-pthread -fopenmp" ./configure
+        make -j$(nproc)
+
+    - name: Generate HPL.dat configuration from template
+      template:
+        src: "/home/{{ username }}/clenman/scripts/benchmarks/src/HPL.dat.j2"
+        dest: "{{ hpl_dir }}/hpl-{{ hpl_version }}/testing/HPL.dat"  
+
+################################# Slurm Bots #########################################
+
+- name: Configure Slurm Bots and QoS for Load Testing
+  hosts: head_nodes
+  become: true
+  tags: 
+    - bots
+  vars:
+    bots:
+      - "bot_latenz"
+      - "bot_throughput"
+      - "bot_memory"
+  tasks:
+    - name: Create system users for each bot
+      loop: "{{ bots }}"
+      user:
+        name: "{{ item }}"
+        state: present
+        create_home: no
+
+    - name: Create account "{{ username }}"
+      command: sacctmgr add account name={{ username }} --immediate
+      args:
+        creates: /etc/slurm/account_slurm_created.flag
+      register: account_created
+      ignore_errors: yes  
+
+    - name: Create user "{{ username }}" and assign to the account "{{ username }}"
+      command: sacctmgr add user name={{ username }} account={{ username }} partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
+      register: user_add
+      ignore_errors: yes  
+
+    - name: Create account "bots"
+      command: sacctmgr add account name=bots --immediate
+      args:
+        creates: /etc/slurm/account_bots_created.flag
+      register: account_created
+      failed_when: "'Nothing new added' not in account_created.stdout"
+      changed_when: "'Nothing new added' not in account_created.stdout"
+
+    - name: Create users (bots) and assign to the account "bots"
+      loop: "{{ bots }}"
+      command: sacctmgr add user name={{ item }} account=bots partition={{ hostvars[groups["computing_nodes"][0]].ComputingPartitionName }} --immediate
+      register: user_add
+      failed_when: "'Nothing new added' not in user_add.stdout and user_add.rc != 0"
+      changed_when: "'Nothing new added' not in user_add.stdout"
+
+    - name: Create high priority QoS with resource limits
+      command: sacctmgr add qos name=high_priority GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=20 --immediate
+      args:
+        creates: /etc/slurm/qos_high_priority_created.flag
+      register: qos_high_priority
+      failed_when: "'Nothing new added' not in qos_high_priority.stdout and qos_high_priority.rc != 0"
+      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
+
+    - name: Modify resources for QoS "low_priority"
+      command: sacctmgr modify qos name=high_priority set GrpTRES=cpu=12,mem=6G MaxWall=24:00:00 MaxJobs=10 --immediate
+      register: qos_high_priority
+      failed_when: qos_high_priority.rc != 0
+      changed_when: "'Nothing new added' not in qos_high_priority.stdout"
+
+    - name: Create low priority QoS with resource limits
+      command: sacctmgr add qos name=low_priority GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
+      args:
+        creates: /etc/slurm/qos_low_priority_created.flag
+      register: low_high_priority
+      failed_when: "'Nothing new added' not in low_high_priority.stdout and low_high_priority.rc != 0"
+      changed_when: "'Nothing new added' not in low_high_priority.stdout"
+
+    - name: Modify resources for QoS "low_priority"
+      command: sacctmgr modify qos name=low_priority set GrpTRES=cpu=6,mem=3G MaxWall=48:00:00 MaxJobs=10 --immediate
+      register: qos_low_priority
+      failed_when: qos_low_priority.rc != 0
+      changed_when: "'Nothing new added' not in qos_low_priority.stdout"
+
+    - name: Assign high_priority QoS to bot_latenz
+      command: sacctmgr modify user name=bot_latenz set qos=high_priority --immediate
+
+    - name: Assign low_priority QoS to bot_throughput and bot_memory
+      loop:
+        - bot_throughput
+        - bot_memory
+      command: sacctmgr modify user name={{ item }} set qos=low_priority --immediate
+
+    - name: Output bot QoS assignments
+      loop: "{{ bots }}"
+      command: sacctmgr show associations where user={{ item }}
+      register: qos_output
+      failed_when: qos_output.rc != 0
+
+################################# Install cpufrequtils  #########################################
+
+- name: Install cpufrequtils for mocking
+  hosts: all
+  become: true
+  tags: 
+    - mocking
+    - cpufrequtils
+  tasks:
+    - name: Install cpufrequtils
+      apt:
+        name: cpufrequtils
+        state: present
+
+################################# Install venv  #########################################
+
+- name: Setup Python venv and install packages
+  hosts: all
+  become: yes
+  tags: 
+    - venv
+    - python3  
+  vars:
+    venv_path: "/home/{{ username }}/clenman/scripts/ailearning"
+    python_packages:
+      - pandas
+      - mysql-connector-python
+      - influxdb-client
+      - sqlalchemy
+      - dbclient
+
+  tasks:
+    - name: Install python3 and python3-venv
+      apt:
+        name:
+          - python3
+          - python3-venv
+        state: present
+        update_cache: yes
+
+    - name: Create virtual environment (if not exists)
+      command: python3 -m venv {{ venv_path }}
+      args:
+        creates: "{{ venv_path }}/bin/python"
+
+    - name: Install packages in virtual environment
+      pip:
+        name: "{{ python_packages }}"
+        virtualenv: "{{ venv_path }}"
+        virtualenv_command: "python3 -m venv"
+
+
+################################# Install LIKWID  #########################################
+
+- name: Install LIKWID on (ARMv8)
+  hosts: all
+  become: yes
+  tags: 
+    - install
+    - likwid
+  tasks:
+    - name: Update all packages
+      apt:
+        update_cache: yes
+
+    - name: Install necessary dependencies for LIKWID
+      apt:
+        name:
+          - git
+          - build-essential
+          - hwloc
+          - libncurses5-dev
+          - libncursesw5-dev
+          - zlib1g-dev
+          - libnuma-dev
+          - pciutils
+        state: present
+
+    - name: Clone or update the LIKWID repository
+      git:
+        repo: 'https://github.com/RRZE-HPC/likwid.git'
+        dest: /home/{{  username }}/likwid
+        version: HEAD
+        update: yes
+        force: yes
+
+    - name: Modify config.mk for ARMv8
+      lineinfile:
+        path: /home/{{  username }}/likwid/config.mk
+        regexp: '^COMPILER ='
+        line: 'COMPILER = GCCARMv8'
+        create: yes
+
+    - name: Update ACCESSMODE in config.mk
+      ansible.builtin.lineinfile:
+        path: /path/to/likwid/config.mk
+        regexp: '^ACCESSMODE\s*=.*'
+        line: 'ACCESSMODE = perf_event'
+        create: yes
+
+    - name: Build and install LIKWID
+      shell: |
+        cd /home/{{ username }}/likwid
+        make clean
+        make
+        make install
+      args:
+        executable: /bin/bash
+
+    - name: Reload environment variables
+      shell: . /etc/environment
+      args:
+        executable: /bin/bash
+
+    - name: Verify LIKWID installation
+      shell: |
+        likwid-perfctr --version
+      args:
+        executable: /bin/bash
+      ignore_errors: yes    
+
+################################### Reboot ########################################
+
+- name: Reboot all Nodes
+  hosts: all
+  become: true
+  tags: 
+    - reboot
+  tasks:
+    - name: Reboot the system to apply changes
+      tags: debug
+      reboot:
+        reboot_timeout: 600
+
+    - name: Wait for the system to come back online
+      tags: debug
+      wait_for_connection:
+        timeout: 300

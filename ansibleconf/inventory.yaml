@@ -1,0 +1,111 @@
+all:
+  children:
+    head_nodes:
+      hosts:
+        hnode001:
+          ansible_host: 192.168.113.20
+      vars:
+        head_partition_name: head_nodes
+        head_CPUs: 4
+        head_real_memory: 7810
+        head_sockets: 1
+        head_cores_per_socket: 4
+        head_threads_per_core: 1
+        head_slurm_state: UNKNOWN
+        head_nodes: ALL
+        head_default: YES
+        head_max_time: INFINITE
+        head_state: UP
+        
+    computing_nodes:
+      hosts:
+        node001:
+          ansible_host: 192.168.113.21
+        node002:
+          ansible_host: 192.168.113.22
+        node003:
+          ansible_host: 192.168.113.23
+
+      vars:
+        computing_partition_name: computing_nodes
+        computing_CPUs: 4
+        computing_real_memory: 7810
+        computing_sockets: 1
+        computing_cores_per_socket: 4
+        computing_threads_per_core: 1
+        computing_slurm_state: UNKNOWN
+        computing_nodes: ALL
+        computing_default: YES
+        computing_max_time: INFINITE
+        computing_state: UP
+
+  vars:
+    username: node
+
+    # Software-Versions
+    influxdb2_version: '2.7.1'
+    node_exporter_version: '1.8.2'
+    prometheus_version: '2.35.0'
+    reframe_version: 'v4.6.2'
+    hpl_version: "2.3"
+
+    # URLs for InfluxDB, Prometheus and Telegraf
+    prometheus_url: "http://192.168.113.20:9090"
+    telegraf_url: "http://192.168.113.20:8092"
+    influxdb_url: "http://192.168.113.20:8086"
+
+    # Slurm
+    slurmuser: slurm
+    cluster_name: "snowflake"
+    slurm_ctld_host: "hnode001"
+    max_tasks_per_node: 4
+    root_password: "root"
+    mariadb_slurm_password: "/var/run/munge/munge.socket.2"
+    slurmctld_port: 6817
+    dbd_port: 6819
+    storage_port: 3306
+
+    #Reframe
+    nodes_used_in_reframe_tests: 3
+
+    # DNS
+    cluster_domain_name: "cluster.internal"
+    cluster_network: "192.168.113.0"
+    dns_server: "192.168.113.20"
+    backup_dns_server: "192.168.113.10"
+    network: "192.168.113" 
+    reverse_network: "113.168.192" 
+
+    # NFS Settings
+    nfs_dir_name: clusterfs
+
+    # Influx, Prometheus and Telegraf Configuration
+    telegraf_config_file: /etc/telegraf/telegraf.conf
+    influxdb_admin_user: "admin"                  
+    influxdb_admin_password: "administrator"     
+    influxdb_org_name: "clusterwatch"
+    influxdb_bucket_name: "clusterdata"
+    influxdb_data_retention: 30d
+    node_exporter_user: node_exporter
+
+    # MQTT and Shelly-Devices
+    mqtt_broker_port: 1883
+    mqtt_broker_config_file: /etc/mosquitto/mosquitto.conf
+    shelly_user: "" 
+    shelly_password: "" 
+    shelly_devices:
+      - name: shelly001
+        ip: 192.168.113.17
+      - name: shelly002
+        ip: 192.168.113.18
+      - name: shelly003
+        ip: 192.168.113.19
+      - name: hshelly001
+        ip: 192.168.113.24
+
+    # HPL and HPL.dat vars
+    hpl_dir: "/{{ nfs_dir_name }}/hpl"
+    matrix_size: 4096
+    block_size: 128
+    p_: 2
+    q_: 2

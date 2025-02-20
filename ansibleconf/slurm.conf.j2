@@ -1,0 +1,153 @@
+ClusterName={{ cluster_name }}
+SlurmctldHost={{ slurm_ctld_host }}
+#DisableRootJobs={{ disable_root_jobs | default('NO') }}
+#EnforcePartLimits={{ enforce_part_limits | default('NO') }}
+#Epilog={{ epilog | default('') }}
+#EpilogSlurmctld={{ epilog_slurmctld | default('') }}
+#FirstJobId={{ first_job_id | default('1') }}
+#MaxJobId={{ max_job_id | default('67043328') }}
+#GresTypes={{ gres_types | default('') }}
+#GroupUpdateForce={{ group_update_force | default('0') }}
+#GroupUpdateTime={{ group_update_time | default('600') }}
+#JobFileAppend={{ job_file_append | default('0') }}
+#JobRequeue={{ job_requeue | default('1') }}
+#JobSubmitPlugins={{ job_submit_plugins | default('lua') }}
+#KillOnBadExit={{ kill_on_bad_exit | default('0') }}
+#LaunchType={{ launch_type | default('launch/slurm') }}
+#Licenses={{ licenses | default('foo*4,bar') }}
+#MailProg={{ mail_prog | default('/bin/mail') }}
+#MaxJobCount={{ max_job_count | default('10000') }}
+#MaxStepCount={{ max_step_count | default('40000') }}
+MaxTasksPerNode={{ max_tasks_per_node | default('8') }}
+MpiDefault={{ mpi_default | default('pmix') }}
+#MpiParams={{ mpi_params | default('ports=#-#') }}
+#PluginDir={{ plugin_dir | default('') }}
+#PlugStackConfig={{ plug_stack_config | default('') }}
+PrivateData={{ private_data | default('none') }}
+ProctrackType={{ proctrack_type | default('proctrack/cgroup') }}
+#Prolog={{ prolog | default('') }}
+#PrologFlags={{ prolog_flags | default('Contain') }}
+#PrologSlurmctld={{ prolog_slurmctld | default('') }}
+#PropagatePrioProcess={{ propagate_prio_process | default('0') }}
+#PropagateResourceLimits={{ propagate_resource_limits | default('') }}
+#PropagateResourceLimitsExcept={{ propagate_resource_limits_except | default('') }}
+#RebootProgram={{ reboot_program | default('') }}
+ReturnToService={{ return_to_service | default('1') }}
+SlurmctldPidFile={{ slurmctld_pid_file | default('/var/run/slurmctld.pid') }}
+SlurmctldPort={{ slurmctld_port | default('6817') }}
+SlurmdPidFile={{ slurmd_pid_file | default('/var/run/slurmd.pid') }}
+SlurmdPort={{ slurmd_port | default('6818') }}
+SlurmdSpoolDir={{ slurmd_spool_dir | default('/var/spool/slurmd') }}
+SlurmUser={{ slurmuser | default('slurm') }}
+#SlurmdUser={{ slurmd_user | default('root') }}
+#SrunEpilog={{ srun_epilog | default('') }}
+#SrunProlog={{ srun_prolog | default('') }}
+StateSaveLocation={{ state_save_location | default('/var/lib/slurm/slurmctld') }}
+#SwitchType={{ switch_type | default('') }}
+#TaskEpilog={{ task_epilog | default('') }}
+TaskPlugin={{ task_plugin | default('task/cgroup,task/affinity') }}
+#TaskProlog={{ task_prolog | default('') }}
+#TopologyPlugin={{ topology_plugin | default('topology/tree') }}
+#TmpFS={{ tmpfs | default('/tmp') }}
+#TrackWCKey={{ track_wc_key | default('no') }}
+#TreeWidth={{ tree_width | default('') }}
+#UnkillableStepProgram={{ unkillable_step_program | default('') }}
+#UsePAM={{ use_pam | default('0') }}
+
+# TIMERS
+#BatchStartTimeout={{ batch_start_timeout | default('10') }}
+#CompleteWait={{ complete_wait | default('0') }}
+#EpilogMsgTime={{ epilog_msg_time | default('2000') }}
+#GetEnvTimeout={{ get_env_timeout | default('2') }}
+#HealthCheckInterval={{ health_check_interval | default('0') }}
+#HealthCheckProgram={{ health_check_program | default('') }}
+InactiveLimit={{ inactive_limit | default('0') }}
+KillWait={{ kill_wait | default('30') }}
+#MessageTimeout={{ message_timeout | default('10') }}
+#ResvOverRun={{ resv_over_run | default('0') }}
+MinJobAge={{ min_job_age | default('300') }}
+#OverTimeLimit={{ over_time_limit | default('0') }}
+SlurmctldTimeout={{ slurmctld_timeout | default('120') }}
+SlurmdTimeout={{ slurmd_timeout | default('100') }}
+#UnkillableStepTimeout={{ unkillable_step_timeout | default('60') }}
+#VSizeFactor={{ vsize_factor | default('0') }}
+Waittime={{ waittime | default('0') }}
+
+
+# SCHEDULING
+#DefMemPerCPU={{ def_mem_per_cpu | default('0') }}
+#MaxMemPerCPU={{ max_mem_per_cpu | default('0') }}
+#SchedulerTimeSlice={{ scheduler_time_slice | default('30') }}
+SchedulerType={{ scheduler_type | default('sched/builtin') }}
+SelectType={{ select_type | default('select/cons_tres') }}
+
+# JOB PRIORITY
+#PriorityFlags={{ priority_flags | default('') }}
+#PriorityType={{ priority_type | default('priority/multifactor') }}
+#PriorityDecayHalfLife={{ priority_decay_half_life | default('') }}
+#PriorityCalcPeriod={{ priority_calc_period | default('') }}
+#PriorityFavorSmall={{ priority_favor_small | default('') }}
+#PriorityMaxAge={{ priority_max_age | default('') }}
+#PriorityUsageResetPeriod={{ priority_usage_reset_period | default('') }}
+#PriorityWeightAge={{ priority_weight_age | default('') }}
+#PriorityWeightFairshare={{ priority_weight_fairshare | default('') }}
+#PriorityWeightJobSize={{ priority_weight_job_size | default('') }}
+#PriorityWeightPartition={{ priority_weight_partition | default('') }}
+#PriorityWeightQOS={{ priority_weight_qos | default('') }}
+
+# LOGGING AND ACCOUNTING
+AccountingStorageEnforce={{ accounting_storage_enforce | default('limits') }}
+AccountingStorageHost={{ groups['head_nodes'][0] }}.{{ cluster_domain_name }}
+AccountingStoragePass={{ mariadb_slurm_password | default('') }}
+AccountingStoragePort={{ dbd_port | default('6819') }}
+AccountingStorageType={{ accounting_storage_type | default('accounting_storage/slurmdbd') }}
+AccountingStorageUser={{ slurmuser | default('slurm') }}
+AccountingStoreFlags={{ accounting_store_flags | default('job_comment') }}
+
+#JobCompHost={{ job_comp_host | default('') }}
+JobCompLoc={{ job_comp_loc | default('/var/log/slurm/slurmjob.log') }}
+#JobCompParams={{ job_comp_params | default('') }}
+#JobCompPass={{ job_comp_pass | default('') }}
+#JobCompPort={{ job_comp_port | default('') }}
+JobCompType={{ job_comp_type | default('jobcomp/filetxt') }}
+#JobCompUser={{ job_comp_user | default('') }}
+#JobContainerType={{ job_container_type | default('') }}
+JobAcctGatherFrequency={{ job_acct_gather_frequency | default('30') }}
+JobAcctGatherType={{ job_acct_gather_type | default('jobacct_gather/cgroup') }}
+SlurmctldDebug={{ slurmctld_debug | default('info') }}
+SlurmctldLogFile={{ slurmctld_log_file | default('/var/log/slurm/slurmctld.log') }}
+SlurmdDebug={{ slurmd_debug | default('debug') }}
+SlurmdLogFile={{ slurmd_log_file | default('/var/log/slurm/slurmd.log') }}
+#SlurmSchedLogFile={{ slurm_sched_log_file | default('') }}
+#SlurmSchedLogLevel={{ slurm_sched_log_level | default('') }}
+DebugFlags={{ debug_flags | default('cgroup') }}
+
+
+# POWER SAVE SUPPORT FOR IDLE NODES (optional)
+#SuspendProgram={{ suspend_program | default('') }}
+#ResumeProgram={{ resume_program | default('') }}
+#SuspendTimeout={{ suspend_timeout | default('') }}
+#ResumeTimeout={{ resume_timeout | default('') }}
+#ResumeRate={{ resume_rate | default('') }}
+#SuspendExcNodes={{ suspend_exc_nodes | default('') }}
+#SuspendExcParts={{ suspend_exc_parts | default('') }}
+#SuspendRate={{ suspend_rate | default('') }}
+#SuspendTime={{ suspend_time | default('') }}
+
+
+# slurm.conf template for Slurm Nodes and Partitions
+
+# Head Nodes Definition
+{% for node_name in groups['head_nodes'] %}
+NodeName={{ node_name }} CPUs={{ hostvars[node_name]['head_CPUs'] }} RealMemory={{ hostvars[node_name]['head_real_memory'] }} Sockets={{ hostvars[node_name]['head_sockets'] }} CoresPerSocket={{ hostvars[node_name]['head_cores_per_socket'] }} ThreadsPerCore={{ hostvars[node_name]['head_threads_per_core'] }} State={{ hostvars[node_name]['head_slurm_state'] }}
+{% endfor %}
+
+# Computing Nodes Definition
+{% for node_name in groups['computing_nodes'] %}
+NodeName={{ node_name }} CPUs={{ hostvars[node_name]['computing_CPUs'] }} RealMemory={{ hostvars[node_name]['computing_real_memory'] }} Sockets={{ hostvars[node_name]['computing_sockets'] }} CoresPerSocket={{ hostvars[node_name]['computing_cores_per_socket'] }} ThreadsPerCore={{ hostvars[node_name]['computing_threads_per_core'] }} State={{ hostvars[node_name]['computing_slurm_state'] }}
+{% endfor %}
+
+# Partition Definitions
+PartitionName={{ hostvars[groups['head_nodes'][0]].head_partition_name }} Nodes={{ groups['head_nodes'] | join(',') }} Default={{ hostvars[groups['head_nodes'][0]].head_default }} MaxTime={{ hostvars[groups['head_nodes'][0]].head_max_time }} State={{ hostvars[groups['head_nodes'][0]].head_state }}
+
+PartitionName={{ hostvars[groups['computing_nodes'][0]].computing_partition_name }} Nodes={{ groups['computing_nodes'] | join(',') }} Default={{ hostvars[groups['computing_nodes'][0]].computing_default }} MaxTime={{ hostvars[groups['computing_nodes'][0]].computing_max_time }} AllowGroups=ALL AllowAccounts=ALL State={{ hostvars[groups['computing_nodes'][0]].computing_state }}

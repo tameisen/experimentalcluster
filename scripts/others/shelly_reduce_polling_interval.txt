@@ -1,0 +1,28 @@
+let SHELLY_ID = undefined;
+let timerId = null;
+
+// MQTT-Topic-Prefix abrufen
+Shelly.call("Mqtt.GetConfig", "", function (res, err_code, err_msg, ud) {
+  SHELLY_ID = res["topic_prefix"];
+  startTimerEverySecond();
+});
+
+// Funktion zur Abfrage und Veröffentlichung
+function publishStatus() {
+  let em = Shelly.getComponentStatus("switch", 0);
+  MQTT.publish(SHELLY_ID + "/status/switch:0", JSON.stringify(em), 0, false);
+}
+
+// Funktion, um den Timer so zu setzen, dass er alle 100 ms startet
+function startTimerEverySecond() {
+  if (timerId !== null) {
+    Timer.clear(timerId);
+  }
+
+  timerId = Timer.set(100, true, function () {
+    publishStatus();
+  }, null);
+}
+
+// Timer initialisieren
+startTimerEverySecond();

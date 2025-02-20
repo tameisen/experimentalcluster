@@ -1,0 +1,85 @@
+site_configuration = {
+    'systems': [
+        {
+            'name': '{{ cluster_name }}',
+            'descr': 'Reframe for {{ cluster_name }}',
+            'hostnames': [
+                {% for hostname in groups['head_nodes'] %}
+                '{{ hostname }}'{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ],
+            'prefix': '/{{ nfs_dir_name }}',  # Präfix für generierte Verzeichnisse
+            'partitions': [
+                {
+                    'name': 'computing_nodes',
+                    'descr': 'Computingnodes in {{ cluster_name }}',
+                    'scheduler': 'slurm',
+                    'launcher': 'srun',
+                    'access': [
+                        '--account=node',
+                        '--partition={{ hostvars[groups["computing_nodes"][0]].computing_partition_name }}'
+                                ],
+                    'environs': ['gnu', 'clang'],
+                    'resources': [
+                        {
+                            'name': 'cpu',
+                            'options': ['--cpus-per-task={{ hostvars[groups["computing_nodes"][0]].computing_CPUs }}']
+                        }
+                    ]
+                }     
+            ],
+        }
+    ],
+    'environments': [
+    {
+        'name': 'general_exec',
+        'modules': [],
+        'env_vars': [
+            ['PATH', '$PATH']  # Umgebungsvariablen müssen als Liste von Listen übergeben werden
+        ]
+    },
+    {
+        'name': 'gnu',
+        'cc': 'mpicc',
+        'cxx': 'mpic++',
+        'features': ['openmp'],
+        'extras': {'omp_flag': '-fopenmp'}
+#        'variables': [
+   #             ['CFLAGS', '-I/usr/lib/aarch64-linux-gnu/openmpi/include'],
+ #               ['LDFLAGS', '-L/usr/lib/aarch64-linux-gnu/openmpi/lib']
+  #      ]
+    },
+    {
+        'name': 'clang',
+        'cc': 'clang',
+        'cxx': 'clang++',
+        'features': ['openmp'],
+        'extras': {'omp_flag': '-fopenmp'}
+    },
+    {
+        'name': 'tensorflow_venv',
+        'env_vars': [
+            ['PYTHONPATH', '/home/node/reframe_tensorflow_venv/bin/python3']
+        ]
+    }
+    ],
+    'logging': [
+        {
+            'level': 'info',
+            'handlers': [
+                {
+                    'type': 'file',
+                    'level': 'info',
+                    'filename': '/{{ nfs_dir_name }}/reframe/reframe.log',
+                    'format': '%(asctime)s %(levelname)s: %(message)s'
+                },
+                {
+                    'type': 'stream',
+                    'name': 'stderr',
+                    'level': 'warning',
+                    'format': '%(levelname)s: %(message)s'
+                }
+            ]
+        }
+    ],
+}

@@ -1,0 +1,66 @@
+import reframe as rfm
+import reframe.utility.sanity as sn
+
+@rfm.simple_test
+class StreamTest(rfm.RegressionTest):
+    '''This test checks the stream test:
+       Function    Best Rate MB/s  Avg time     Min time     Max time
+       Triad:          4927.0     0.017174     0.017153     0.017192
+    '''
+
+
+    def __init__(self):
+        self.descr = 'STREAM Benchmark'
+        self.exclusive_access = True
+        self.valid_systems = ['{ cluster_name }:{ computing_partition_name }']  # System added
+        self.valid_prog_environs = ['gnu', 'clang']         # Environment added
+
+        self.use_multithreading = False
+
+        self.prgenv_flags = {
+            'gnu': ['-fopenmp', '-O3'],                     # GNU added
+            'clang': ['-fopenmp', '-O3'],                   # CLANG added
+        }
+
+       # if self.current_system.name in ['arolla', 'tsa']:   # Prüfen ob ich hier auch meinen cluster_name eintrage
+        #    self.exclusive_access = True
+         #   self.valid_prog_environs = ['gnu']
+
+
+        self.sourcesdir = '/home/node/clenman/scripts/benchmarks/src'
+        self.sourcepath = 'stream.c'
+        self.build_system = 'SingleSource'
+        self.num_tasks = 1
+        self.num_tasks_per_node = 1
+        self.stream_cpus_per_task = {
+            '{ cluster_name }:{ computing_partition_name }': 4
+        }
+        self.env_vars = {
+            'OMP_PLACES': 'threads',
+            'OMP_PROC_BIND': 'spread'
+        }
+        self.sanity_patterns = sn.assert_found(
+            r'Solution Validates: avg error less than', self.stdout)
+        self.perf_patterns = {
+            'triad': sn.extractsingle(r'Triad:\s+(?P<triad>\S+)\s+\S+',
+                                      self.stdout, 'triad', float)
+        }
+        self.stream_bw_reference = {
+            'gnu': {
+                'snowflake:computing_nodes': {'triad': (4000, -0.05, None, 'MB/s')},  # Values kinda fit
+            },
+        }
+        self.tags = {'production', 'craype'}
+        self.maintainers = ['RS', 'SK']
+
+    @run_after('setup')
+    def prepare_test(self):
+        self.num_cpus_per_task = self.stream_cpus_per_task.get(
+            self.current_partition.fullname, 1)
+        self.env_vars['OMP_NUM_THREADS'] = self.num_cpus_per_task
+        envname = self.current_environ.name
+
+        try:
+            self.reference = self.stream_bw_reference[envname]
+        except KeyError:
+            self.reference = self.stream_bw_reference['gnu']

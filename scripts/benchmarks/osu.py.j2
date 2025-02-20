@@ -1,0 +1,131 @@
+import contextlib
+import reframe as rfm
+import reframe.utility.sanity as sn
+
+from hpctestlib.microbenchmarks.mpi.osu import (build_osu_benchmarks,
+                                                osu_build_run)
+
+
+class cscs_build_osu_benchmarks(build_osu_benchmarks):
+    build_type = parameter(['cpu'])
+
+#    @run_before('compile')
+ #   def set_mpi_include_path(self):
+  #      # Fügt den OpenMPI-Header- und Bibliothekspfad hinzu
+   #     self.build_system.cflags = ['-I/usr/lib/aarch64-linux-gnu/openmpi/include']
+    #    self.build_system.ldflags += ['-L/usr/lib/aarch64-linux-gnu/openmpi/lib', '-lmpi']
+
+
+class cscs_osu_benchmarks(osu_build_run):
+    exclusive_access = True
+    tags = {'benchmark'}
+
+    @run_after('init')
+    def setup_modules(self):
+        pass
+
+@rfm.simple_test
+class cscs_osu_pt2pt_check(cscs_osu_benchmarks):
+    valid_systems = ['{ cluster_name }:{ computing_partition_name }']
+    valid_prog_environs = ['gnu']
+    
+    benchmark_info = parameter([
+        ('mpi.pt2pt.osu_bw', 'bandwidth'),
+        ('mpi.pt2pt.osu_latency', 'latency')
+    ], fmt=lambda x: x[0], loggable=True)
+    
+    osu_binaries = fixture(cscs_build_osu_benchmarks, scope='environment')
+    
+    allref = {
+        'mpi.pt2pt.osu_bw': {
+            'cpu': {
+                '{ cluster_name }:{ computing_partition_name }': {
+                    'bandwidth': (100.0, -0.10, None, 'MB/s')
+                }
+            }
+        },
+        'mpi.pt2pt.osu_latency': {
+            'cpu': {
+                '{ cluster_name }:{ computing_partition_name }': {
+                    'latency': (80, None, 0.10, 'us')
+                }
+            }
+        }
+    }
+
+    @run_after('init')
+    def setup_per_build_type(self):
+        build_type = self.osu_binaries.build_type
+        with contextlib.suppress(KeyError):
+            self.reference = self.allref[self.benchmark_info[0]][build_type]
+
+    ## Overwriting the run-Function because the standard 4M is too big
+    #@run_before('run')
+    #def adjust_message_size(self):
+    #    self.executable_opts = ['-m', '65536', '-x', '10', '-i', '250', '-c', 'D', 'D']
+    
+    @run_before('setup')
+    def adjust_test_parameters(self):
+        # Passe die Nachrichtengröße an
+        if self.benchmark_info[1] == 'bandwidth':
+            self.message_size = 65536  # Nachrichtengröße auf 64 KB setzen
+        
+        # Reduziere die Anzahl der Iterationen
+        self.num_iters = 100
+    
+        # Setze die ausführbaren Optionen basierend auf den angepassten Werten
+        self.executable_opts = [
+            '-m', f'{self.message_size}',
+            '-x', f'{self.num_warmup_iters}',
+            '-i', f'{self.num_iters}',
+            '-c', 'D', 'D'
+        ]
+    
+        print(f"Debug: Message size set to {self.message_size}")
+        print(f"Debug: Number of iterations set to {self.num_iters}")
+        print(f"Debug: Executable options: {self.executable_opts}")
+    
+
+@rfm.simple_test
+class cscs_osu_collective_check(cscs_osu_benchmarks):
+    benchmark_info = parameter([
+        ('mpi.collective.osu_alltoall', 'latency'),
+        ('mpi.collective.osu_allreduce', 'latency'),
+    ], fmt=lambda x: x[0], loggable=True)
+    
+    num_nodes = {{ nodes_used_in_reframe_tests }}
+    
+    valid_systems = ['{ cluster_name }:{ computing_partition_name }']
+    valid_prog_environs = ['gnu']
+    osu_binaries = fixture(cscs_build_osu_benchmarks, scope='environment')
+    
+    allref = {
+        'mpi.collective.osu_allreduce': {
+            {{ nodes_used_in_reframe_tests }}: {
+                '{ cluster_name }:{ computing_partition_name }': {
+                    'latency': (8.012, None, 0.10, 'us')
+                }
+            }
+        },
+        'mpi.collective.osu_alltoall': {
+            {{ nodes_used_in_reframe_tests }}: {
+                '{ cluster_name }:{ computing_partition_name }': {
+                    'latency': (0, None, None, 'us')
+                }
+            }
+        }
+    }
+
+    extra_resources = {
+        'switches': {
+            'num_switches': 1
+        }
+    }
+
+    @run_after('init')
+    def setup_by_scale(self):
+        self.num_tasks = 2
+        self.num_tasks_per_node = {{ max_tasks_per_node }}
+
+        with contextlib.suppress(KeyError):
+            self.reference = self.allref[self.benchmark_info[0]][self.num_nodes]

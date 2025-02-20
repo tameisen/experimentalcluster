@@ -1,0 +1,159 @@
+from(bucket: "clusterdata")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "pmic_metrics")
+  |> filter(fn: (r) => r["host"] == "hnode001")
+  |> filter(fn: (r) => r["sensor"] == "VDD_CORE_A_current7" or r["sensor"] == "VDD_CORE_V_volt15")
+  |> pivot(rowKey:["_time"], columnKey: ["sensor"], valueColumn: "_value")
+  |> map(fn: (r) => ({
+      _time: r._time,
+      _measurement: r._measurement,
+      _field: "power",  // Hier wird das berechnete Feld benannt
+      _value: r["VDD_CORE_V_volt15"] * r["VDD_CORE_A_current7"] // Berechnung des Produkts
+    }))
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
+  |> yield(name: "mean")
+
+  Berechnet den CPU Verbrauch
+
+  from(bucket: "clusterdata")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "pmic_metrics")
+  |> filter(fn: (r) => r["host"] == "hnode001")
+  |> filter(fn: (r) => r["sensor"] == "0V8_AON_A_current16" or 
+                       r["sensor"] == "0V8_AON_V_volt19" or 
+                       r["sensor"] == "0V8_SW_A_current6" or 
+                       r["sensor"] == "VDD_CORE_V_volt15" or 
+                       r["sensor"] == "VDD_CORE_A_current7" or 
+                       r["sensor"] == "HDMI_V_volt23" or 
+                       r["sensor"] == "HDMI_A_current22" or 
+                       r["sensor"] == "DDR_VDDQ_V_volt12" or 
+                       r["sensor"] == "EXT5V_V_volt24" or 
+                       r["sensor"] == "DDR_VDDQ_A_current4" or 
+                       r["sensor"] == "DDR_VDD2_V_volt11" or 
+                       r["sensor"] == "DDR_VDD2_A_current3" or 
+                       r["sensor"] == "BATT_V_volt25" or 
+                       r["sensor"] == "3V7_WL_SW_V_volt8" or 
+                       r["sensor"] == "3V7_WL_SW_A_current0" or 
+                       r["sensor"] == "3V3_SYS_V_volt9" or 
+                       r["sensor"] == "3V3_SYS_A_current1" or 
+                       r["sensor"] == "3V3_DAC_V_volt20" or 
+                       r["sensor"] == "3V3_DAC_A_current17" or 
+                       r["sensor"] == "3V3_ADC_V_volt21" or 
+                       r["sensor"] == "3V3_ADC_A_current18" or 
+                       r["sensor"] == "1V8_SYS_V_volt10" or 
+                       r["sensor"] == "1V8_SYS_A_current2" or 
+                       r["sensor"] == "1V1_SYS_V_volt13" or 
+                       r["sensor"] == "1V1_SYS_A_current5" or 
+                       r["sensor"] == "0V8_SW_V_volt14")
+  |> pivot(rowKey:["_time"], columnKey: ["sensor"], valueColumn: "_value")
+  |> map(fn: (r) => ({
+      _time: r._time,
+      _measurement: r._measurement,
+      _field: "power",
+      _value: (if exists r["0V8_AON_V_volt19"] and exists r["0V8_AON_A_current16"] then 
+                float(v: r["0V8_AON_V_volt19"]) * float(v: r["0V8_AON_A_current16"]) else 0.0) +
+              (if exists r["0V8_SW_V_volt14"] and exists r["0V8_SW_A_current6"] then 
+                float(v: r["0V8_SW_V_volt14"]) * float(v: r["0V8_SW_A_current6"]) else 0.0) +
+              (if exists r["VDD_CORE_V_volt15"] and exists r["VDD_CORE_A_current7"] then 
+                float(v: r["VDD_CORE_V_volt15"]) * float(v: r["VDD_CORE_A_current7"]) else 0.0) +
+              (if exists r["HDMI_V_volt23"] and exists r["HDMI_A_current22"] then 
+                float(v: r["HDMI_V_volt23"]) * float(v: r["HDMI_A_current22"]) else 0.0) +
+              (if exists r["DDR_VDDQ_V_volt12"] and exists r["DDR_VDDQ_A_current4"] then 
+                float(v: r["DDR_VDDQ_V_volt12"]) * float(v: r["DDR_VDDQ_A_current4"]) else 0.0) +
+              (if exists r["DDR_VDD2_V_volt11"] and exists r["DDR_VDD2_A_current3"] then 
+                float(v: r["DDR_VDD2_V_volt11"]) * float(v: r["DDR_VDD2_A_current3"]) else 0.0) +
+              (if exists r["BATT_V_volt25"] then 
+                float(v: r["BATT_V_volt25"]) * 0.0 else 0.0) +  // Annahme: Kein Stromwert für BATT_V
+              (if exists r["3V7_WL_SW_V_volt8"] and exists r["3V7_WL_SW_A_current0"] then 
+                float(v: r["3V7_WL_SW_V_volt8"]) * float(v: r["3V7_WL_SW_A_current0"]) else 0.0) +
+              (if exists r["3V3_SYS_V_volt9"] and exists r["3V3_SYS_A_current1"] then 
+                float(v: r["3V3_SYS_V_volt9"]) * float(v: r["3V3_SYS_A_current1"]) else 0.0) +
+              (if exists r["3V3_DAC_V_volt20"] and exists r["3V3_DAC_A_current17"] then 
+                float(v: r["3V3_DAC_V_volt20"]) * float(v: r["3V3_DAC_A_current17"]) else 0.0) +
+              (if exists r["3V3_ADC_V_volt21"] and exists r["3V3_ADC_A_current18"] then 
+                float(v: r["3V3_ADC_V_volt21"]) * float(v: r["3V3_ADC_A_current18"]) else 0.0) +
+              (if exists r["1V8_SYS_V_volt10"] and exists r["1V8_SYS_A_current2"] then 
+                float(v: r["1V8_SYS_V_volt10"]) * float(v: r["1V8_SYS_A_current2"]) else 0.0) +
+              (if exists r["1V1_SYS_V_volt13"] and exists r["1V1_SYS_A_current5"] then 
+                float(v: r["1V1_SYS_V_volt13"]) * float(v: r["1V1_SYS_A_current5"]) else 0.0)
+    }))
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
+  |> yield(name: "mean")
+
+Berechnet den Verbrauch aller Sensoren zusammen
+
+from(bucket: "clusterdata")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "pmic_metrics")
+  |> filter(fn: (r) => r["host"] == "hnode001")
+  |> filter(fn: (r) => r["sensor"] == "0V8_AON_A_current16" or 
+                       r["sensor"] == "0V8_AON_V_volt19" or 
+                       r["sensor"] == "0V8_SW_A_current6" or 
+                       r["sensor"] == "VDD_CORE_V_volt15" or 
+                       r["sensor"] == "VDD_CORE_A_current7" or 
+                       r["sensor"] == "HDMI_V_volt23" or 
+                       r["sensor"] == "HDMI_A_current22" or 
+                       r["sensor"] == "DDR_VDDQ_V_volt12" or 
+                       r["sensor"] == "EXT5V_V_volt24" or 
+                       r["sensor"] == "DDR_VDDQ_A_current4" or 
+                       r["sensor"] == "DDR_VDD2_V_volt11" or 
+                       r["sensor"] == "DDR_VDD2_A_current3" or 
+                       r["sensor"] == "BATT_V_volt25" or 
+                       r["sensor"] == "3V7_WL_SW_V_volt8" or 
+                       r["sensor"] == "3V7_WL_SW_A_current0" or 
+                       r["sensor"] == "3V3_SYS_V_volt9" or 
+                       r["sensor"] == "3V3_SYS_A_current1" or 
+                       r["sensor"] == "3V3_DAC_V_volt20" or 
+                       r["sensor"] == "3V3_DAC_A_current17" or 
+                       r["sensor"] == "3V3_ADC_V_volt21" or 
+                       r["sensor"] == "3V3_ADC_A_current18" or 
+                       r["sensor"] == "1V8_SYS_V_volt10" or 
+                       r["sensor"] == "1V8_SYS_A_current2" or 
+                       r["sensor"] == "1V1_SYS_V_volt13" or 
+                       r["sensor"] == "1V1_SYS_A_current5" or 
+                       r["sensor"] == "0V8_SW_V_volt14")
+  |> pivot(rowKey:["_time"], columnKey: ["sensor"], valueColumn: "_value")
+  |> map(fn: (r) => ({
+      _time: r._time,
+      _measurement: r._measurement,
+      _field: "power",
+      _value: (if exists r["0V8_AON_V_volt19"] and exists r["0V8_AON_A_current16"] then 
+                float(v: r["0V8_AON_V_volt19"]) * float(v: r["0V8_AON_A_current16"]) else 0.0) +
+              (if exists r["0V8_SW_V_volt14"] and exists r["0V8_SW_A_current6"] then 
+                float(v: r["0V8_SW_V_volt14"]) * float(v: r["0V8_SW_A_current6"]) else 0.0) +
+              (if exists r["VDD_CORE_V_volt15"] and exists r["VDD_CORE_A_current7"] then 
+                float(v: r["VDD_CORE_V_volt15"]) * float(v: r["VDD_CORE_A_current7"]) else 0.0) +
+              (if exists r["HDMI_V_volt23"] and exists r["HDMI_A_current22"] then 
+                float(v: r["HDMI_V_volt23"]) * float(v: r["HDMI_A_current22"]) else 0.0) +
+              (if exists r["DDR_VDDQ_V_volt12"] and exists r["DDR_VDDQ_A_current4"] then 
+                float(v: r["DDR_VDDQ_V_volt12"]) * float(v: r["DDR_VDDQ_A_current4"]) else 0.0) +
+              (if exists r["DDR_VDD2_V_volt11"] and exists r["DDR_VDD2_A_current3"] then 
+                float(v: r["DDR_VDD2_V_volt11"]) * float(v: r["DDR_VDD2_A_current3"]) else 0.0) +
+              (if exists r["BATT_V_volt25"] then 
+                float(v: r["BATT_V_volt25"]) * 0.0 else 0.0) +  // Annahme: Kein Stromwert für BATT_V
+              (if exists r["3V7_WL_SW_V_volt8"] and exists r["3V7_WL_SW_A_current0"] then 
+                float(v: r["3V7_WL_SW_V_volt8"]) * float(v: r["3V7_WL_SW_A_current0"]) else 0.0) +
+              (if exists r["3V3_SYS_V_volt9"] and exists r["3V3_SYS_A_current1"] then 
+                float(v: r["3V3_SYS_V_volt9"]) * float(v: r["3V3_SYS_A_current1"]) else 0.0) +
+              (if exists r["3V3_DAC_V_volt20"] and exists r["3V3_DAC_A_current17"] then 
+                float(v: r["3V3_DAC_V_volt20"]) * float(v: r["3V3_DAC_A_current17"]) else 0.0) +
+              (if exists r["3V3_ADC_V_volt21"] and exists r["3V3_ADC_A_current18"] then 
+                float(v: r["3V3_ADC_V_volt21"]) * float(v: r["3V3_ADC_A_current18"]) else 0.0) +
+              (if exists r["1V8_SYS_V_volt10"] and exists r["1V8_SYS_A_current2"] then 
+                float(v: r["1V8_SYS_V_volt10"]) * float(v: r["1V8_SYS_A_current2"]) else 0.0) +
+              (if exists r["1V1_SYS_V_volt13"] and exists r["1V1_SYS_A_current5"] then 
+                float(v: r["1V1_SYS_V_volt13"]) * float(v: r["1V1_SYS_A_current5"]) else 0.0)
+    }))
+  |> yield(name: "raw")
+
+Genau wie oben nur mit exacten werten
+
+from(bucket: "clusterdata")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "mqtt_consumer")
+  |> filter(fn: (r) => r["_field"] == "apower")
+  |> filter(fn: (r) => r["host"] == "hnode001")
+  |> filter(fn: (r) => r["topic"] == "hshelly001/status/switch:0")
+  |> yield(name: "raw")
+
+  Gibt die Roh-Daten vom Shelly zurück

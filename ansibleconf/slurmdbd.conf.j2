@@ -1,0 +1,17 @@
+# slurmdbd.conf - Slurm Database Daemon configuration file
+
+AuthType=auth/munge
+DbdHost={{ groups['head_nodes'][0] }}
+DbdPort={{ dbd_port }} 
+SlurmUser={{ slurmuser }}
+LogFile=/var/log/slurm/slurmdbd.log
+PidFile=/var/run/slurmdbd.pid
+StorageType=accounting_storage/mysql
+StorageHost={{ groups['head_nodes'][0] }}
+StoragePort={{ storage_port }}
+StorageUser={{ slurmuser }}
+StoragePass={{ mariadb_slurm_password }}
+StorageLoc=slurm_acct_db
+
+# Debugging und Logging
+DebugLevel=info

@@ -1,0 +1,55 @@
+# Global Agent Configuration
+[agent]
+  interval = "1s"
+  round_interval = true
+  metric_batch_size = 2000
+  metric_buffer_limit = 20000
+  collection_jitter = "0s"
+  flush_interval = "5s"
+  flush_jitter = "0s"
+  precision = ""
+  debug = false
+  quiet = false
+  logfile = ""
+  hostname = "{{ inventory_hostname }}"
+
+# Input Plugins
+    [[inputs.execd]]
+  command = ["python3", "/etc/telegraf/parse_vcgencmd.py"]
+  signal = "STDIN" 
+  interval = "100ms"
+  restart_delay = "1s" 
+  data_format = "influx"
+  name_override = "pmic_metrics"
+
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ hostvars[groups['head_nodes'][0]].ansible_host }}:{{ mqtt_broker_port }}"]
+  topics = [
+{% for device in shelly_devices %}
+    "{{ device.name }}/status/switch:0"{% if not loop.last %},{% endif %}
+{% endfor %}
+  ]           
+  qos = 1
+  connection_timeout = "90s"
+  username = "{{ shelly_user }}" 
+  password = "{{ shelly_password }}"
+  data_format = "json"
+  interval = "10s"
+
+{% if groups['computing_nodes'] %}
+[[inputs.prometheus]]
+  urls = [
+  {% for host in groups['computing_nodes'] %}
+    "http://{{ hostvars[host]['ansible_host'] }}:9100",
+  {% endfor %}
+  ]
+  metric_version = 2
+  url_tag = "nodes"
+{% endif %}
+
+# Output Plugin
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ lookup('env', 'INFLUX_TOKEN') }}"
+  organization = "{{ influxdb_org_name }}"
+  bucket = "{{ influxdb_bucket_name }}"

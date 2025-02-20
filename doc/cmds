@@ -1,0 +1,91 @@
+Kopieren per SSH:
+scp -r C:\Users\insraw\Desktop\AnsibleSetup aki@192.168.113.16:~/Documents
+
+SSH Keygen:
+ssh-keygen -t rsa -b 4096
+
+Daemon neustarten:
+sudo systemctl daemon-
+
+Alles neu einhängen:
+sudo mount -a
+
+Runnable machen:
+chmod +x install.sh
+
+Repsitory updaten:
+git pull origin main
+oder
+git pull origin experimental
+
+git experimental holen:
+git fetch origin experimental
+git reset --hard origin/experimental
+
+Ansible Skript ausführen:
+ansible-playbook -i inventory.yaml clustersetuprework.yaml
+oder
+ansible-playbook -i inventory.yaml clustersetuprework.yaml --tags "common,checks"
+
+Virtuelle Umgebung aktivieren:
+. /home/node/reframe_tensorflow_venv/bin/activate
+/home/node/reframe/bin/reframe -c /home/node/reframe/benchmarks/my_benchmark.py -r
+/home/node/reframe_tensorflow_venv/bin/reframe -C /home/node/reframe/reframe.py -c /home/node/reframe/my_cpu_benchmark.py -r
+
+CPU frequenz ausgeben:
+grep . /sys/devices/system/cpu/cpu0/cpufreq/*
+
+Grafana debuggen:
+sudo journalctl -u grafana-server.service -b
+
+Volt, Ampere etc abfragen:
+vcgencmd pmic_read_adc
+
+Node resetten:
+scontrol update nodename=node001 state=idle
+
+Mpi debugging:
+mpirun --mca plm_base_verbose 5 -np 4 python3 dein_programm.py
+srun --mpi=pmix -n 8 --nodes=2 --ntasks-per-node=4 python3 calculate.py
+
+DNS debuging:
+reverse:
+dig -x 192.168.113.20
+forward:
+dig node001.cluster.internal
+
+Mosquitto Abfragen:
+mosquitto_sub -h 192.168.113.20 -p 1883 -t "shelly001/status/switch:0"
+
+Clusterfs / NFS debugging:
+sudo umount /clusterfs
+sudo mount /clusterfs
+
+Reframe Test ausführen:
+/clusterfs/reframe-git/bin/reframe -C /clusterfs/reframe/reframe.py -c /clusterfs/cscs-reframe-tests/checks/ -R -r --system=snowflake:computing_nodes --distribute=idle
+
+Reframe eigene Tests cmd:
+/clusterfs/reframe-git/bin/reframe -C /clusterfs/reframe/reframe.py -c /clusterfs/clenman-reframe-tests/checks/ -R -r --system=snowflake:computing_nodes --distribute=idle
+
+
+MySQL Mariadb:
+sudo mysql --socket=/run/mysqld/mysqld.sock
+
+# Teste die Verbindung und zeige die Konfiguration an
+sacctmgr show cluster
+
+# Beispiel: Füge einen neuen Account hinzu
+sacctmgr add account your_account_name
+
+Laufzeit eines Jobs prüfen:
+sacct -l -j {jobnr}
+
+Run HPL benchmark with OpenMPI:
+srun -n {{ p_ * q_ }} ./xhpl
+# i.e. p_=2 q_=2
+
+Jobiinformationen zu Startzeit Endzeit und der benutzten Node aus der DB abrufen:
+sacct -j 717 --format=JobID,JobName,Start,End,NodeList
+sacct --starttime=2023-11-23T09:55:00 --endtime=2023-11-23T10:05:00 --format=JobID,JobName,Partition,NodeList,Start,End,Elapsed,State
+
+sudo apt-get install python3-pandas python3-mysqldb python3-sqlalchemy

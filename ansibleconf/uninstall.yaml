@@ -1,0 +1,129 @@
+- name: Restore cmdline.txt with correct PARTUUID
+  hosts: all
+  become: yes
+  tags: common-restore
+  tasks:
+    - name: Get the PARTUUID of the root partition
+      shell: blkid -o export $(findmnt -nro SOURCE /)
+      register: blkid_output
+
+    - name: Set the PARTUUID variable
+      set_fact:
+        root_partuuid: "{{ blkid_output.stdout_lines | select('match', '^PARTUUID=') | list | first }}"
+
+    - name: Verify PARTUUID has been found
+      debug:
+        msg: "Found PARTUUID: {{ root_partuuid }}"
+      when: root_partuuid is defined
+
+    - name: Ensure cmdline.txt is restored with correct PARTUUID
+      lineinfile:
+        path: /boot/firmware/cmdline.txt
+        line: "console=serial0,115200 console=tty1 root={{ root_partuuid.split('=')[1] }} rw rootwait"
+        regexp: '^console=serial0,115200 console=tty1 root=PARTUUID='
+        state: present
+      when: root_partuuid is defined
+
+    - name: Display updated cmdline.txt contents
+      command: cat /boot/firmware/cmdline.txt
+      register: updated_cmdline_contents
+
+    - debug:
+        var: updated_cmdline_contents.stdout
+
+- name: Uninstall SLURM
+  hosts: all
+  become: yes
+  tags: 
+    - slurm-uninstall
+  tasks:
+    - name: Uninstall SLURM-Packages
+      apt:
+        name: 
+          - slurm-wlm
+          - slurm-wlm-basic-plugins
+          - slurmctld
+          - slurm-client          
+          - slurmd
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Remove SLURM Log-, Spool-Files and SLURM-Configuration Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/slurm      
+        - /var/log/slurm
+        - /var/spool/slurmd
+        - /var/spool/slurmctld
+
+    - name: Remove munge.key file
+      file:
+        path: /etc/munge/munge.key
+        state: absent
+      tags: debug
+
+
+- name: Neuinstallation von InfluxDB 2.x
+  hosts: head_nodes
+  become: true
+  tags: influxdb2-uninstall
+  tasks:
+    - name: Stop InfluxDB service
+      ansible.builtin.systemd:
+        name: influxdb
+        state: stopped
+
+    - name: Remove InfluxDB data directory
+      ansible.builtin.file:
+        path: /var/lib/influxdb
+        state: absent
+
+    - name: Remove InfluxDB configuration directory
+      ansible.builtin.file:
+        path: /etc/influxdb
+        state: absent
+
+- name: Delete InfluxDB organization "{{ influxdb_org_name }}"
+  hosts: head_nodes
+  become: true
+  tags: influxdb2-uninstall  
+  tasks:
+    - name: Get InfluxDB Org ID for "{{ influxdb_org_name }}"
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/orgs?org={{ influxdb_org_name }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ influxdb_initial_token }}"
+          Content-Type: "application/json"
+        return_content: yes
+      register: influxdb_org_info
+      ignore_errors: yes
+
+    - name: Debug Org ID retrieval
+      ansible.builtin.debug:
+        var: influxdb_org_info
+      when: influxdb_org_info.status == 200
+
+    - name: Set InfluxDB Org ID as a fact
+      ansible.builtin.set_fact:
+        influxdb_org_id: "{{ influxdb_org_info.json.orgs[0].id }}"
+      when: influxdb_org_info.status == 200 and influxdb_org_info.json.orgs | length > 0
+
+    - name: Delete InfluxDB organization "{{ influxdb_org_name }}"
+      ansible.builtin.uri:
+        url: "{{ influxdb_url }}/api/v2/orgs/{{ influxdb_org_id }}"
+        method: DELETE
+        headers:
+          Authorization: "Token {{ influxdb_initial_token }}"
+          Content-Type: "application/json"
+        status_code: 204
+      when: influxdb_org_id is defined
+      ignore_errors: yes
+
+    - name: Debug deletion status
+      ansible.builtin.debug:
+        msg: "InfluxDB organization '{{ influxdb_org_name }}' deleted successfully."
+      when: influxdb_org_id is defined

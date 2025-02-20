@@ -1,0 +1,22 @@
+$TTL 86400
+@   IN  SOA {{ groups['head_nodes'][0] }}.{{ cluster_domain_name }}. admin.{{ cluster_domain_name }}. (
+        2024082801 ; Serial
+        3600       ; Refresh
+        1800       ; Retry
+        1209600    ; Expire
+        86400      ; Minimum TTL
+)
+
+    IN  NS  {{ groups['head_nodes'][0] }}.{{ cluster_domain_name }}.
+
+{% for host in groups['head_nodes'] %}
+{{ host }} IN  A  {{ hostvars[host]['ansible_host'] }}
+{% endfor %}
+
+{% for host in groups['computing_nodes'] %}
+{{ host }} IN  A  {{ hostvars[host]['ansible_host'] }}
+{% endfor %}
+
+{% for device in shelly_devices %}
+{{ device.name }} IN  A  {{ device.ip }}
+{% endfor %}

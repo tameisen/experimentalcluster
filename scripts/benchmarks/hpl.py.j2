@@ -1,0 +1,62 @@
+import os
+import reframe as rfm
+import reframe.utility.sanity as sn
+
+
+@rfm.simple_test
+class HPLCheck(rfm.RunOnlyRegressionTest):
+
+    nnodes = {{ nodes_used_in_reframe_tests }}
+    num_tasks_per_node = {{ max_tasks_per_node }}
+    valid_prog_environs = ['gnu']
+    
+    executable = 'xhpl'
+    env_vars = {
+        'CPU_CORES_PER_RANK': '4',
+        'OMP_NUM_THREADS': '$CPU_CORES_PER_RANK',
+        'MKL_NUM_THREADS': '$CPU_CORES_PER_RANK',
+        'HUGETLB_VERBOSE': '0',
+        'HUGETLB_DEFAULT_PAGE_SIZE': '8M',
+    }
+
+    @run_after('init')
+    def set_descr(self):
+        self.descr = f'HPL {self.nnodes} nodes check for snowflake'
+
+    @run_after('init')
+    def set_valid_systems(self):
+        self.valid_systems = ['{ cluster_name }:{ computing_partition_name }']
+
+    @run_after('setup')
+    def set_sourcesdir(self):
+        self.sourcesdir = '/{{ hpl_dir }}/hpl-{{ hpl_version }}/testing'
+
+    @run_before('run')
+    def set_num_tasks(self):
+        self.num_tasks = self.nnodes * {{ max_tasks_per_node }}
+
+    @run_before('run')
+    def setjobopts(self):
+        self.job.options += ['--cpu-freq=2401000']
+
+    @run_before('run')
+    def set_trsm_cutoff(self):
+        self.env_vars['TRSM_CUTOFF'] = '35000'
+
+    @sanity_function
+    def assert_end_of_tests(self):
+        return sn.assert_found(r'End of Tests', self.stdout)
+
+    @run_before('performance')
+    def set_perf_reference(self):
+        self.reference = {
+            '{ cluster_name }:{ computing_partition_name }': {
+                'perf': (18.500, -0.10, None, 'Gflop/s')
+            }
+        }
+
+    @performance_function('Gflop/s')
+    def perf(self):
+        return sn.extractsingle(r'WR01C2C4\s+\d+\s+\d+\s+\d+\s+\d+\s+\S+\s+(?P<perf>\S+)',
+                                self.stdout, 'perf', float)
+
