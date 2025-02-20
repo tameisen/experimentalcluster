@@ -1780,22 +1780,6 @@
         - reframe
         - config
 
-    - name: Reload systemd daemon to recognize new service
-      ansible.builtin.systemd:
-        daemon_reload: yes
-      tags:
-        - service
-        - config
-
-    - name: Enable and start ReFrame service
-      ansible.builtin.systemd:
-        name: reframe
-        enabled: yes
-        state: started
-      tags: 
-        - service
-        - config
-
     - name: Add ReFrame to PATH in .bashrc
       ansible.builtin.lineinfile:
         path: /home/{{ username }}/.bashrc
@@ -1847,23 +1831,17 @@
   #      hour: "8"
   #      job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system=cluster:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
 
-    - name: Make all scripts in /home/{{ username }}/experimentalcluster/scripts/mocking/ executable
+    - name: Make all scripts in /home/{{ username }}/experimentalcluster/scripts/analysis/ executable
       file:
-        path: /home/{{ username }}/experimentalcluster/scripts/mocking/
+        path: /home/{{ username }}/experimentalcluster/scripts/analysis/
         recurse: yes
         mode: '0755'
         state: directory
 
-#    - name: Create cron job for ReFrame latency test every 30 minutes
-#      cron:
-#        name: "Run ReFrame Latency Test every 60 minutes"
-#        minute: "*/60"
-#        job: "/home/{{ username }}/experimentalcluster/scripts/mocking/latency_job.sh >> /var/log/reframe_cron.log 2>&1"
-
     - name: Create cron job for ReFrame Benchmark every 30 minutes
       cron:
         name: "Run ReFrame Benchmark Test every 10 minutes"
-        minute: "*/30"  # Alle 30 Minuten
+        minute: "*/30"  # 30 Minutes
         job: "/{{ nfs_dir_name }}/reframe-git/bin/reframe -C /{{ nfs_dir_name }}/reframe/reframe.py -c /{{ nfs_dir_name }}/cscs-reframe-tests/checks/ -R -r --system={{ cluster_name }}:computing_nodes --distribute=idle >> /var/log/reframe_benchmark.log 2>&1"
 
     - name: Change ownership of /{{ nfs_dir_name }}/stage recursively to {{  username }}:{{  username }}
@@ -1904,11 +1882,11 @@
       loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/benchmarks/*.j2', wantlist=True) }}"
       delegate_to: localhost
 
-    - name: Render Jinja2 templates for mocking and move to target directory
+    - name: Render Jinja2 templates for analysis and move to target directory
       template:
         src: "{{ item }}"
         dest: "/{{ nfs_dir_name }}/experimentalcluster-reframe-tests/scripts/{{ item | basename | regex_replace('.j2$', '') }}"
-      loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/mocking/*.j2', wantlist=True) }}"
+      loop: "{{ lookup('fileglob', '/home/' + username + '/experimentalcluster/scripts/analysis/*.j2', wantlist=True) }}"
       delegate_to: localhost
 
     - name: Find all .sh files in the target directory
@@ -2129,7 +2107,7 @@
     - venv
     - python3  
   vars:
-    venv_path: "/home/{{ username }}/experimentalcluster/scripts/ailearning"
+    venv_path: "/home/{{ username }}/experimentalcluster/scripts"
     python_packages:
       - pandas
       - mysql-connector-python
