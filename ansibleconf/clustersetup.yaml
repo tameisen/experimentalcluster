@@ -1363,11 +1363,9 @@
         url: "{{ influxdb_url }}/api/v2/sources"
         method: GET
         headers:
-          Authorization: "Token {{ lookup('env', 'INFLUX_TOKEN') }}"
+          Authorization: "Token {{ influxdb_initial_token }}"
           Content-Type: "application/json"
         return_content: yes
-      environment:
-        INFLUX_TOKEN: "{{ influxdb_initial_token }}"
       register: influxdb_sources
 
     - name: Set fact if Prometheus data source exists
