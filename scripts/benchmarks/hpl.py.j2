@@ -25,7 +25,7 @@ class HPLCheck(rfm.RunOnlyRegressionTest):
 
     @run_after('init')
     def set_valid_systems(self):
-        self.valid_systems = ['{{ cluster_name }}:{{ computing_partition_name }}']
+        self.valid_systems = ['{{ hostvars[groups['computing_nodes'][0]].cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}']
 
     @run_after('setup')
     def set_sourcesdir(self):
@@ -50,7 +50,7 @@ class HPLCheck(rfm.RunOnlyRegressionTest):
     @run_before('performance')
     def set_perf_reference(self):
         self.reference = {
-            '{{ cluster_name }}:{{ computing_partition_name }}': {
+            '{{ hostvars[groups['computing_nodes'][0]].cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}': {
                 'perf': (18.500, -0.10, None, 'Gflop/s')
             }
         }

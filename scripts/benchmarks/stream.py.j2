@@ -33,7 +33,7 @@ class StreamTest(rfm.RegressionTest):
         self.num_tasks = 1
         self.num_tasks_per_node = 1
         self.stream_cpus_per_task = {
-            '{{ cluster_name }}:{{ computing_partition_name }}': 4
+            '{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}': 4
         }
         self.env_vars = {
             'OMP_PLACES': 'threads',
@@ -47,7 +47,7 @@ class StreamTest(rfm.RegressionTest):
         }
         self.stream_bw_reference = {
             'gnu': {
-                'snowflake:computing_nodes': {'triad': (4000, -0.05, None, 'MB/s')},  # Values kinda fit
+                '{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}': {'triad': (4000, -0.05, None, 'MB/s')},  # Values kinda fit
             },
         }
         self.tags = {'production', 'craype'}

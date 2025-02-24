@@ -5,8 +5,8 @@ import reframe.utility.sanity as sn
 
 @rfm.simple_test
 class HPCGCheckRef(rfm.RegressionTest):
-    descr = 'HPCG reference benchmark for snowflake'
-    valid_systems = ['{{ cluster_name }}:{{ computing_partition_name }}']
+    descr = 'HPCG reference benchmark for {{ cluster_name }}'
+    valid_systems = ['{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}']
     valid_prog_environs = ['gnu']
     build_system = 'Make'
     sourcesdir = 'https://github.com/hpcg-benchmark/hpcg.git'
@@ -20,7 +20,7 @@ class HPCGCheckRef(rfm.RegressionTest):
     num_cpus_per_task = 1
     
     reference = {
-        '{{ cluster_name }}:{{ computing_partition_name }}': {
+        '{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}': {
             'gflops': (1.2, -0.1, None, 'Gflop/s')
         }
     }
@@ -38,7 +38,7 @@ class HPCGCheckRef(rfm.RegressionTest):
 
     @performance_function('Gflop/s')
     def gflops(self):
-        # Berechnung der Leistung in GFLOP/s für `snowflake`
+        # Berechnung der Leistung in GFLOP/s für `{{ cluster_name }}`
         return sn.extractsingle(
             r'HPCG result is VALID with a GFLOP\/s rating of=\s*(?P<perf>\S+)',
             self.output_file, 'perf', float
