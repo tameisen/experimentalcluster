@@ -226,10 +226,6 @@
         dest: /boot/firmware/cmdline.txt
       when: new_cmdline != current_cmdline
 
-
-
-
-
     - name: Display updated cmdline.txt contents
       command: cat /boot/firmware/cmdline.txt
       register: updated_cmdline_contents
@@ -431,6 +427,15 @@
         path: /{{ nfs_dir_name }}
         state: directory
         mode: '0777'
+      ignore_errors: true
+
+    - name: Set owner and group to "node"
+      ansible.builtin.file:
+        path: /{{ nfs_dir_name }}
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        # If recursive rights for whole fs is neccessary:
+        # recurse: yes
       ignore_errors: true
 
     - name: Mount NFS share
