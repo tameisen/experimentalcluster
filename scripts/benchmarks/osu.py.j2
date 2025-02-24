@@ -26,7 +26,7 @@ class cscs_osu_benchmarks(osu_build_run):
 
 @rfm.simple_test
 class cscs_osu_pt2pt_check(cscs_osu_benchmarks):
-    valid_systems = ['{ cluster_name }:{ computing_partition_name }']
+    valid_systems = ['{{ cluster_name }}:{{ computing_partition_name }}']
     valid_prog_environs = ['gnu']
     
     benchmark_info = parameter([
@@ -39,14 +39,14 @@ class cscs_osu_pt2pt_check(cscs_osu_benchmarks):
     allref = {
         'mpi.pt2pt.osu_bw': {
             'cpu': {
-                '{ cluster_name }:{ computing_partition_name }': {
+                '{{ cluster_name }}:{{ computing_partition_name }}': {
                     'bandwidth': (100.0, -0.10, None, 'MB/s')
                 }
             }
         },
         'mpi.pt2pt.osu_latency': {
             'cpu': {
-                '{ cluster_name }:{ computing_partition_name }': {
+                '{{ cluster_name }}:{{ computing_partition_name }}': {
                     'latency': (80, None, 0.10, 'us')
                 }
             }
@@ -95,21 +95,21 @@ class cscs_osu_collective_check(cscs_osu_benchmarks):
     
     num_nodes = {{ nodes_used_in_reframe_tests }}
     
-    valid_systems = ['{ cluster_name }:{ computing_partition_name }']
+    valid_systems = ['{{ cluster_name }}:{{ computing_partition_name }}']
     valid_prog_environs = ['gnu']
     osu_binaries = fixture(cscs_build_osu_benchmarks, scope='environment')
     
     allref = {
         'mpi.collective.osu_allreduce': {
             {{ nodes_used_in_reframe_tests }}: {
-                '{ cluster_name }:{ computing_partition_name }': {
+                '{{ cluster_name }}:{{ computing_partition_name }}': {
                     'latency': (8.012, None, 0.10, 'us')
                 }
             }
         },
         'mpi.collective.osu_alltoall': {
             {{ nodes_used_in_reframe_tests }}: {
-                '{ cluster_name }:{ computing_partition_name }': {
+                '{{ cluster_name }}:{{ computing_partition_name }}': {
                     'latency': (0, None, None, 'us')
                 }
             }
