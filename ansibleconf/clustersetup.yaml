@@ -807,13 +807,15 @@
         file_type: file
       register: slurm_etc_files
 
-    - name: Change permissions of all files in /etc/slurm to 0644
+    - name: Change permissions of all files in /etc/slurm to 0644 except slurmdbd.conf
       file:
         path: "{{ item.path }}"
         mode: '0644'
-        owner: "{{  slurmuser  }}"
-        group: "{{  slurmuser  }}"            
-      with_items: "{{ slurm_etc_files.files }}"    
+        owner: "{{ slurmuser }}"
+        group: "{{ slurmuser }}"
+      with_items: "{{ slurm_etc_files.files }}"
+      when: item.path != '/etc/slurm/slurmdbd.conf'
+  
 
     - name: Find all files in /etc/slurm
       find:
