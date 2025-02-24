@@ -748,6 +748,19 @@
         name: mariadb
         state: restarted
 
+    - name: "Check if user 'node' exists in Slurm"
+      become: yes
+      shell: |
+        sacctmgr list user format="User" --noheader --parsable2 | grep '^node$'
+      register: slurm_users
+      failed_when: false 
+
+    - name: "Create user 'node' in account 'node' for cluster 'snowflake'"
+      become: yes
+      command: sacctmgr create user node account=node cluster=snowflake
+      when: slurm_users.rc != 0
+
+
 - name: Ensure slurmctld and slurmdbd run as slurm user
   hosts: head_nodes
   become: yes
@@ -1683,6 +1696,7 @@
           - libopenmpi-dev
           - python3-mpi4py
           - python3-numpy
+          - libopenblas-dev
         state: present
         update_cache: yes
 
@@ -1964,13 +1978,6 @@
         path: "{{ hpl_dir }}"
         state: directory
         mode: '0755'
-
-    - name: Install required packages for HPL
-      apt:
-        name: "{{ item }}"
-        state: present
-      loop:
-        - libopenblas-dev
 
     - name: Download HPL source code
       get_url:
