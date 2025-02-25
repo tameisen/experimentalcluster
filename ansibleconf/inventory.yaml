@@ -64,6 +64,7 @@ all:
     slurmctld_port: 6817
     dbd_port: 6819
     storage_port: 3306
+    scheduler_type: 'sched/backfill'
 
     #Reframe
     nodes_used_in_reframe_tests: 3
