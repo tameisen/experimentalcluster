@@ -187,6 +187,42 @@
         path: /etc/hosts
         state: present
         line: "{{ hostvars['hnode001']['ansible_host'] }} hnode001"
+#
+#- name: Set hostname to ansible_host
+#  hosts: all
+#  become: true
+#  tasks:
+#    - name: Read Hostname from Inventory-File
+#      set_fact:
+#        new_hostname: "{{ ansible_host }}"
+#
+#    - name: Set new Hostname in /etc/hostname
+#      copy:
+#        content: "{{ new_hostname }}\n"
+#        dest: /etc/hostname
+#        owner: root
+#        group: root
+#        mode: '0644'
+#
+#    - name: Set old hostname in /etc/hosts
+#      lineinfile:
+#        path: /etc/hosts
+#        regexp: '^127\.0\.1\.1\s+'
+#        line: "127.0.1.1 {{ new_hostname }}"
+#        backup: yes
+#
+#    - name: Set Hostname directly (no reboot)
+#      command: hostnamectl set-hostname "{{ new_hostname }}"
+#
+#    - name: Check Hostname
+#      command: hostname
+#      register: current_hostname
+#
+#    - name: Show hostname
+#      debug:
+#        msg: "Hostname changed to {{ current_hostname.stdout }}!"
+#      
+
 
 - name: Ensure correct cgroup parameters in cmdline.txt
   hosts: all

@@ -93,3 +93,6 @@ source bin/activate
 cd analysis/
 
 python3 collectdata_pmic.py
+
+Alten fingerprint entfernen: (Wenn Nodes umbenannt werden)
+ssh-keygen -f "/home/node/.ssh/known_hosts" -R "node001"
