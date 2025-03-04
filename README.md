@@ -78,4 +78,5 @@ To execute the playbook for automating cluster setup and energy optimization, ru
 bash
 ansible-playbook -i inventory.yaml clustersetup.yaml
 
-
+You can find a short documentation here:
+https://docs.google.com/document/d/163e-198UjBhi-P1V7CVf_UOZJqFy_x6RHkrAmssChVc/edit?tab=t.0
