@@ -61,11 +61,8 @@ Clusterfs / NFS debugging:
 sudo umount /clusterfs
 sudo mount /clusterfs
 
-Reframe Test ausführen:
-/clusterfs/reframe-git/bin/reframe -C /clusterfs/reframe/reframe.py -c /clusterfs/cscs-reframe-tests/checks/ -R -r --system=snowflake:computing_nodes --distribute=idle
-
 Reframe eigene Tests cmd:
-/clusterfs/reframe-git/bin/reframe -C /clusterfs/reframe/reframe.py -c /clusterfs/clenman-reframe-tests/checks/ -R -r --system=snowflake:computing_nodes --distribute=idle
+/clusterfs/reframe-git/bin/reframe -C /clusterfs/reframe/reframe.py -c /clusterfs/experimentalcluster-reframe-tests/checks/ -R -r --system=snowflake:computing_nodes --distribute=idle
 
 
 MySQL Mariadb:
@@ -89,3 +86,10 @@ sacct -j 717 --format=JobID,JobName,Start,End,NodeList
 sacct --starttime=2023-11-23T09:55:00 --endtime=2023-11-23T10:05:00 --format=JobID,JobName,Partition,NodeList,Start,End,Elapsed,State
 
 sudo apt-get install python3-pandas python3-mysqldb python3-sqlalchemy
+
+Analyse Skripte starten:
+cd /experimentalcluster/scripts/
+source bin/activate
+cd analysis/
+
+python3 collectdata_pmic.py

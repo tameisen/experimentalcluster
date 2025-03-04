@@ -12,7 +12,7 @@ class StreamTest(rfm.RegressionTest):
     def __init__(self):
         self.descr = 'STREAM Benchmark'
         self.exclusive_access = True
-        self.valid_systems = ['{ cluster_name }:{ computing_partition_name }']  # System added
+        self.valid_systems = ['{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}']  # System added
         self.valid_prog_environs = ['gnu', 'clang']         # Environment added
 
         self.use_multithreading = False
@@ -27,13 +27,13 @@ class StreamTest(rfm.RegressionTest):
          #   self.valid_prog_environs = ['gnu']
 
 
-        self.sourcesdir = '/home/node/clenman/scripts/benchmarks/src'
+        self.sourcesdir = '/home/{{ username }}/experimentalcluster/scripts/benchmarks/src'
         self.sourcepath = 'stream.c'
         self.build_system = 'SingleSource'
         self.num_tasks = 1
         self.num_tasks_per_node = 1
         self.stream_cpus_per_task = {
-            '{ cluster_name }:{ computing_partition_name }': 4
+            '{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}': 4
         }
         self.env_vars = {
             'OMP_PLACES': 'threads',
@@ -47,7 +47,7 @@ class StreamTest(rfm.RegressionTest):
         }
         self.stream_bw_reference = {
             'gnu': {
-                'snowflake:computing_nodes': {'triad': (4000, -0.05, None, 'MB/s')},  # Values kinda fit
+                '{{ cluster_name }}:{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}': {'triad': (4000, -0.05, None, 'MB/s')},  # Values kinda fit
             },
         }
         self.tags = {'production', 'craype'}

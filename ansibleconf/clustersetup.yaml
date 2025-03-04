@@ -226,10 +226,6 @@
         dest: /boot/firmware/cmdline.txt
       when: new_cmdline != current_cmdline
 
-
-
-
-
     - name: Display updated cmdline.txt contents
       command: cat /boot/firmware/cmdline.txt
       register: updated_cmdline_contents
@@ -431,6 +427,15 @@
         path: /{{ nfs_dir_name }}
         state: directory
         mode: '0777'
+      ignore_errors: true
+
+    - name: Set owner and group to "node"
+      ansible.builtin.file:
+        path: /{{ nfs_dir_name }}
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        # If recursive rights for whole fs is neccessary:
+        # recurse: yes
       ignore_errors: true
 
     - name: Mount NFS share
@@ -743,6 +748,19 @@
         name: mariadb
         state: restarted
 
+    - name: "Check if user 'node' exists in Slurm"
+      become: yes
+      shell: |
+        sacctmgr list user format="User" --noheader --parsable2 | grep '^node$'
+      register: slurm_users
+      failed_when: false 
+
+    - name: "Create user 'node' in account 'node' for cluster 'snowflake'"
+      become: yes
+      command: sacctmgr create user node account=node cluster=snowflake
+      when: slurm_users.rc != 0
+
+
 - name: Ensure slurmctld and slurmdbd run as slurm user
   hosts: head_nodes
   become: yes
@@ -802,13 +820,15 @@
         file_type: file
       register: slurm_etc_files
 
-    - name: Change permissions of all files in /etc/slurm to 0644
+    - name: Change permissions of all files in /etc/slurm to 0644 except slurmdbd.conf
       file:
         path: "{{ item.path }}"
         mode: '0644'
-        owner: "{{  slurmuser  }}"
-        group: "{{  slurmuser  }}"            
-      with_items: "{{ slurm_etc_files.files }}"    
+        owner: "{{ slurmuser }}"
+        group: "{{ slurmuser }}"
+      with_items: "{{ slurm_etc_files.files }}"
+      when: item.path != '/etc/slurm/slurmdbd.conf'
+  
 
     - name: Find all files in /etc/slurm
       find:
@@ -1676,6 +1696,7 @@
           - libopenmpi-dev
           - python3-mpi4py
           - python3-numpy
+          - libopenblas-dev
         state: present
         update_cache: yes
 
@@ -1957,13 +1978,6 @@
         path: "{{ hpl_dir }}"
         state: directory
         mode: '0755'
-
-    - name: Install required packages for HPL
-      apt:
-        name: "{{ item }}"
-        state: present
-      loop:
-        - libopenblas-dev
 
     - name: Download HPL source code
       get_url:

@@ -11,7 +11,7 @@ site_configuration = {
             'prefix': '/{{ nfs_dir_name }}',  # Präfix für generierte Verzeichnisse
             'partitions': [
                 {
-                    'name': 'computing_nodes',
+                    'name': '{{ hostvars[groups['computing_nodes'][0]].computing_partition_name }}',
                     'descr': 'Computingnodes in {{ cluster_name }}',
                     'scheduler': 'slurm',
                     'launcher': 'srun',
